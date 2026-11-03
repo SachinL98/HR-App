@@ -26,7 +26,7 @@ psql "$DATABASE_URL" -f sql/rls.sql
 
 ```bash
 npm install
-npm run dev:api     # http://localhost:3000
-npm run dev:web
+npm run dev:api     # http://localhost:4000
+npm run dev:web     # http://localhost:3000
 npm run dev:mobile
 ```
