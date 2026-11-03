@@ -10,6 +10,9 @@ import { MailService } from './auth/mail.service';
 import { OrgController } from './org/org.controller';
 import { AppController } from './app.controller';
 import { LeaveController } from './leave/leave.controller';
+import { DocumentsController } from './documents/documents.controller';
+import { DocumentsService } from './documents/documents.service';
+import { FileStore } from './documents/file-store';
 import { PayrollController } from './payroll/payroll.controller';
 import { PayrollService } from './payroll/payroll.service';
 import { MeetingsController } from './meetings/meetings.controller';
@@ -39,6 +42,7 @@ if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET)
     LeaveController,
     MeetingsController,
     PayrollController,
+    DocumentsController,
     NoticesController,
     NotificationsController,
     SetupController,
@@ -49,6 +53,8 @@ if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET)
     LeaveService,
     MeetingsService,
     PayrollService,
+    DocumentsService,
+    FileStore,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
   ],

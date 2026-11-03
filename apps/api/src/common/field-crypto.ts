@@ -36,23 +36,20 @@ if (process.env.NODE_ENV === 'production') master(); // fail at boot, not at fir
 const tenantKey = (tenantId: string) =>
   Buffer.from(hkdfSync('sha256', master(), tenantId, 'hr-field-v1', 32));
 
-export function encryptJson(
+export function encryptBytes(
   tenantId: string,
-  value: unknown,
+  plain: Uint8Array,
 ): Uint8Array<ArrayBuffer> {
   const iv = randomBytes(12);
   const c = createCipheriv('aes-256-gcm', tenantKey(tenantId), iv);
   c.setAAD(Buffer.from(tenantId));
-  const body = Buffer.concat([
-    c.update(JSON.stringify(value), 'utf8'),
-    c.final(),
-  ]);
+  const body = Buffer.concat([c.update(plain), c.final()]);
   return new Uint8Array(
     Buffer.concat([Buffer.from([VERSION]), iv, c.getAuthTag(), body]),
   );
 }
 
-export function decryptJson<T>(tenantId: string, data: Uint8Array): T {
+export function decryptBytes(tenantId: string, data: Uint8Array): Buffer {
   const buf = Buffer.from(data);
   if (buf[0] !== VERSION) throw new Error('Unknown encryption version');
   const d = createDecipheriv(
@@ -62,6 +59,11 @@ export function decryptJson<T>(tenantId: string, data: Uint8Array): T {
   );
   d.setAAD(Buffer.from(tenantId));
   d.setAuthTag(buf.subarray(13, 29));
-  const out = Buffer.concat([d.update(buf.subarray(29)), d.final()]);
-  return JSON.parse(out.toString('utf8')) as T;
+  return Buffer.concat([d.update(buf.subarray(29)), d.final()]);
 }
+
+export const encryptJson = (tenantId: string, value: unknown) =>
+  encryptBytes(tenantId, Buffer.from(JSON.stringify(value), 'utf8'));
+
+export const decryptJson = <T>(tenantId: string, data: Uint8Array): T =>
+  JSON.parse(decryptBytes(tenantId, data).toString('utf8')) as T;

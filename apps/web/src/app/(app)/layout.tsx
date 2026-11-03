@@ -20,9 +20,11 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     { href: "/notices", label: "Notices" },
     { href: "/notifications", label: notes.unreadCount ? `Notifications (${notes.unreadCount})` : "Notifications" },
     { href: "/payslips", label: "Payslips" },
+    { href: "/documents", label: "Documents" },
     { href: "/people", label: "People" },
   ];
   if (can("payroll.view") || can("payroll.manage")) items.push({ href: "/payroll", label: "Payroll" });
+  if (can("document.issue") || can("document.template.manage") || can("document.request.approve")) items.push({ href: "/documents/manage", label: "Manage documents" });
   if (can("quota.manage") || can("holiday.manage")) items.push({ href: "/settings/leave", label: "Leave policy" });
   if (can("role.manage")) items.push({ href: "/settings/roles", label: "Roles" });
   if (can("branding.manage")) items.push({ href: "/settings/appearance", label: "Appearance" });
