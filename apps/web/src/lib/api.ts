@@ -112,3 +112,17 @@ export interface PayslipDetail {
   id: string; member: { id: string; firstName: string; lastName: string }; periodStart: string; periodEnd: string; currency: string;
   status: string; unpaidDays: string; gross: number; net: number; lines: PayLine[]; ruleVersion: string | null;
 }
+
+export interface DocTemplate { id: string; name: string; kind: string; html: string | null; fields: string[]; requestable: boolean; version: number }
+export interface Seal { id: string; kind: "stamp" | "signature"; label: string; signatoryId: string | null; token: string }
+export interface IssuedDoc {
+  id: string; name: string; kind: string; subject: { id: string; firstName: string; lastName: string };
+  issuedAt: string; revokedAt: string | null; verifyCode: string;
+}
+export interface DocRequest {
+  id: string; status: "PENDING" | "APPROVED" | "REJECTED"; reason: string | null; createdAt: string;
+  details: { templateId: string; templateName: string; documentId?: string };
+  requester?: { id: string; firstName: string; lastName: string };
+}
+export interface DocPreview { title: string; text: string; needsStamp: boolean; needsSignatures: string[] }
+export interface VerifyResult { valid: boolean; found: boolean; revoked?: boolean; document?: string; company?: string; issuedAt?: string }

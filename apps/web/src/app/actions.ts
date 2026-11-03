@@ -367,3 +367,83 @@ export async function moveRun(d: FormData) {
   await api(`/payroll/runs/${s(d, "id")}/${s(d, "step")}`, { body: {} }).catch(() => {});
   revalidatePath(`/payroll/runs/${s(d, "id")}`);
 }
+
+// ───────── documents ─────────
+
+export async function createTemplate(_: FormState, d: FormData): Promise<FormState> {
+  try {
+    await api("/document-templates", { body: { name: s(d, "name"), kind: s(d, "kind"), body: String(d.get("body") ?? ""), requestable: d.get("requestable") === "on" } });
+  } catch (e) {
+    return fail(e);
+  }
+  revalidatePath("/documents/manage");
+  return { ok: "Template saved." };
+}
+
+export async function archiveTemplate(d: FormData) {
+  await api(`/document-templates/${s(d, "id")}`, { method: "DELETE" }).catch(() => {});
+  revalidatePath("/documents/manage");
+}
+
+export async function addSeal(_: FormState, d: FormData): Promise<FormState> {
+  const file = d.get("image");
+  if (!(file instanceof File) || file.size === 0) return { error: "Choose a PNG image." };
+  if (file.size > 1_000_000) return { error: "The image is larger than 1 MB." };
+  try {
+    await api("/seals", {
+      body: {
+        kind: s(d, "kind"), label: s(d, "label"), signatoryId: s(d, "signatoryId") || undefined,
+        imageBase64: Buffer.from(await file.arrayBuffer()).toString("base64"),
+      },
+    });
+  } catch (e) {
+    return fail(e);
+  }
+  revalidatePath("/documents/manage");
+  return { ok: "Saved." };
+}
+
+export async function removeSeal(d: FormData) {
+  await api(`/seals/${s(d, "id")}`, { method: "DELETE" }).catch(() => {});
+  revalidatePath("/documents/manage");
+}
+
+export async function issueDocument(_: FormState, d: FormData): Promise<FormState> {
+  try {
+    await api("/documents", {
+      body: {
+        templateId: s(d, "templateId"), memberId: s(d, "memberId"), sealIds: d.getAll("sealIds").map(String),
+        requestId: s(d, "requestId") || undefined,
+      },
+    });
+  } catch (e) {
+    return fail(e);
+  }
+  revalidatePath("/documents/manage");
+  return { ok: "Issued. The person has been notified." };
+}
+
+export async function revokeDocument(d: FormData) {
+  await api(`/documents/${s(d, "id")}/revoke`, { body: {} }).catch(() => {});
+  revalidatePath("/documents/manage");
+}
+
+export async function requestDocument(_: FormState, d: FormData): Promise<FormState> {
+  try {
+    await api("/document-requests", { body: { templateId: s(d, "templateId"), purpose: s(d, "purpose") || undefined } });
+  } catch (e) {
+    return fail(e);
+  }
+  revalidatePath("/documents");
+  return { ok: "Request sent." };
+}
+
+export async function decideDocRequest(_: FormState, d: FormData): Promise<FormState> {
+  try {
+    await api(`/document-requests/${s(d, "id")}/decision`, { body: { decision: s(d, "decision"), comment: s(d, "comment") || undefined } });
+  } catch (e) {
+    return fail(e);
+  }
+  revalidatePath("/documents/manage");
+  return { ok: "Done." };
+}

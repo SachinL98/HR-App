@@ -44,3 +44,7 @@ These rules are a best-effort implementation of published figures. **An accounta
 Salaries, payslip lines and totals are encrypted per value with AES-256-GCM. The key for each company is derived (HKDF) from one master key, and the company id is bound in as authenticated data, so a value copied to another company's row will not decrypt.
 
 Set `FIELD_ENCRYPTION_KEY` (32 random bytes, base64: `openssl rand -base64 32`). The API refuses to start in production without it. **If the key is lost the data cannot be recovered**: store it in a secrets manager and back it up separately from the database. Rotating the key needs a re-encryption job, which is not built yet.
+
+## Documents (Phase 3b)
+
+Templates are plain text with `{{member.*}}`, `{{company.*}}`, `{{today}}`, `{{stamp}}` and `{{signature.<label>}}` tokens. Issued letters are rendered to PDF with a QR code pointing at the public `/verify/<code>` page, which shows only the document type, company and date. Files are encrypted at rest in `FILE_STORAGE_DIR` (default `./.data/files`). Limits: PDF text is Latin only (other scripts show as `?`), no virus scanning, no DOCX import.
