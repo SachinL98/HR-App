@@ -10,6 +10,10 @@ import { MailService } from './auth/mail.service';
 import { OrgController } from './org/org.controller';
 import { AppController } from './app.controller';
 import { LeaveController } from './leave/leave.controller';
+import { MeetingsController } from './meetings/meetings.controller';
+import { MeetingsService } from './meetings/meetings.service';
+import { NoticesController } from './notices/notices.controller';
+import { NotificationsController } from './notifications/notifications.controller';
 import { SetupController } from './leave/setup.controller';
 import { LeaveService } from './leave/leave.service';
 
@@ -31,12 +35,16 @@ if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET)
     AuthController,
     OrgController,
     LeaveController,
+    MeetingsController,
+    NoticesController,
+    NotificationsController,
     SetupController,
   ],
   providers: [
     AuthService,
     MailService,
     LeaveService,
+    MeetingsService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
   ],

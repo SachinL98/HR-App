@@ -9,6 +9,7 @@ import type { LeaveType } from '@prisma/client';
 import { PrismaService, Tx } from '../prisma/prisma.service';
 import type { Ctx } from '../common/ctx';
 import { can, PermissionAction } from '../org/permissions';
+import { notify } from '../notifications/notify';
 import { CreateRequestDto, DecisionDto } from './dto';
 import {
   DayWeight,
@@ -561,6 +562,13 @@ export class LeaveService {
           targetId: id,
         },
       });
+      if (status !== 'PENDING')
+        await notify(tx, c.tenantId, [r.requesterId], {
+          event: `request.${status.toLowerCase()}`,
+          title: `Your ${r.type === 'WFH' ? 'work from home' : 'leave'} request was ${status.replace('_', ' ').toLowerCase()}`,
+          body: dto.comment,
+          link: '/leave',
+        });
       return updated;
     });
   }

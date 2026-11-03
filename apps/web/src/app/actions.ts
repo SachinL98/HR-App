@@ -2,6 +2,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { api, ApiError, type Grant } from "@/lib/api";
+import { zonedToUtc } from "@/lib/tz";
 import { clearSession, setSession } from "@/lib/session";
 import type { FormState } from "@/components/action-form";
 
@@ -253,4 +254,61 @@ export async function addHoliday(_: FormState, d: FormData): Promise<FormState> 
 export async function deleteHoliday(d: FormData) {
   await api(`/holidays/${s(d, "id")}`, { method: "DELETE" }).catch(() => {});
   revalidatePath("/settings/leave");
+}
+
+// ───────── meetings, notices, notifications ─────────
+
+export async function createMeeting(_: FormState, d: FormData): Promise<FormState> {
+  try {
+    const org = await api<{ timeZone: string }>("/org");
+    const day = s(d, "date");
+    await api("/meetings", {
+      body: {
+        title: s(d, "title"), description: s(d, "description") || undefined, location: s(d, "location") || undefined,
+        meetUrl: s(d, "meetUrl") || undefined, timeZone: org.timeZone,
+        startsAt: zonedToUtc(day, s(d, "start"), org.timeZone), endsAt: zonedToUtc(day, s(d, "end"), org.timeZone),
+        memberIds: d.getAll("memberIds").map(String), departmentIds: d.getAll("departmentIds").map(String),
+      },
+    });
+  } catch (e) {
+    return fail(e);
+  }
+  revalidatePath("/calendar");
+  return { ok: "Meeting scheduled. Invitees have been notified." };
+}
+
+export async function rsvpMeeting(d: FormData) {
+  await api(`/meetings/${s(d, "id")}/rsvp`, { method: "PUT", body: { rsvp: s(d, "rsvp") } }).catch(() => {});
+  revalidatePath("/calendar");
+}
+
+export async function cancelMeeting(d: FormData) {
+  await api(`/meetings/${s(d, "id")}`, { method: "DELETE" }).catch(() => {});
+  revalidatePath("/calendar");
+}
+
+export async function publishNotice(_: FormState, d: FormData): Promise<FormState> {
+  const audience = s(d, "audience");
+  try {
+    await api("/notices", {
+      body: {
+        title: s(d, "title"), body: s(d, "body"), important: d.get("important") === "on", requireAck: d.get("requireAck") === "on",
+        everyone: audience === "all", departmentIds: audience === "all" ? undefined : d.getAll("departmentIds").map(String),
+      },
+    });
+  } catch (e) {
+    return fail(e);
+  }
+  revalidatePath("/notices");
+  return { ok: "Notice published." };
+}
+
+export async function readNotice(d: FormData) {
+  await api(`/notices/${s(d, "id")}/read`, { body: { acknowledge: d.get("acknowledge") === "1" } }).catch(() => {});
+  revalidatePath("/notices");
+}
+
+export async function readAllNotifications() {
+  await api("/notifications/read-all", { body: {} }).catch(() => {});
+  revalidatePath("/notifications");
 }
