@@ -9,6 +9,9 @@ import { AuthGuard } from './auth/auth.guard';
 import { MailService } from './auth/mail.service';
 import { OrgController } from './org/org.controller';
 import { AppController } from './app.controller';
+import { LeaveController } from './leave/leave.controller';
+import { SetupController } from './leave/setup.controller';
+import { LeaveService } from './leave/leave.service';
 
 if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET)
   throw new Error('JWT_SECRET must be set in production');
@@ -23,10 +26,17 @@ if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET)
       signOptions: { expiresIn: '8h' },
     }),
   ],
-  controllers: [AppController, AuthController, OrgController],
+  controllers: [
+    AppController,
+    AuthController,
+    OrgController,
+    LeaveController,
+    SetupController,
+  ],
   providers: [
     AuthService,
     MailService,
+    LeaveService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
   ],

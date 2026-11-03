@@ -10,6 +10,7 @@ import { createHash, randomBytes, randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { PLAN_LIMITS } from '../org/permissions';
 import { AcceptInviteDto, LoginDto, RegisterDto } from './dto';
+import { seedLeaveDefaults } from '../leave/leave.service';
 
 export const hashToken = (t: string) =>
   createHash('sha256').update(t).digest('hex');
@@ -80,6 +81,7 @@ export class AuthService {
             workEmail: email,
           },
         });
+        await seedLeaveDefaults(tx, tenantId, member.id);
         await tx.auditLog.create({
           data: { tenantId, actorId: member.id, action: 'tenant.create' },
         });

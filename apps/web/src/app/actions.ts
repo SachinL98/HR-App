@@ -176,3 +176,81 @@ export async function saveGrants(_: FormState, d: FormData): Promise<FormState> 
   revalidatePath("/people", "layout");
   return { ok: "Permissions saved." };
 }
+
+// ───────── leave, WFH, approvals ─────────
+
+export async function requestTime(_: FormState, d: FormData): Promise<FormState> {
+  const type = s(d, "type");
+  try {
+    await api("/requests", {
+      body: {
+        type, leaveTypeId: type === "LEAVE" ? s(d, "leaveTypeId") || undefined : undefined,
+        startDate: s(d, "startDate"), endDate: s(d, "endDate") || s(d, "startDate"),
+        startPart: s(d, "startPart") || undefined, endPart: s(d, "endPart") || undefined,
+        reason: s(d, "reason") || undefined,
+      },
+    });
+  } catch (e) {
+    return fail(e);
+  }
+  revalidatePath("/leave");
+  return { ok: "Request sent for approval." };
+}
+
+export async function cancelRequest(d: FormData) {
+  await api(`/requests/${s(d, "id")}/cancel`, { method: "POST", body: {} }).catch(() => {});
+  revalidatePath("/leave");
+}
+
+export async function decideRequest(_: FormState, d: FormData): Promise<FormState> {
+  try {
+    await api(`/requests/${s(d, "id")}/decision`, { body: { decision: s(d, "decision"), comment: s(d, "comment") || undefined } });
+  } catch (e) {
+    return fail(e);
+  }
+  revalidatePath("/approvals");
+  return { ok: "Done." };
+}
+
+export async function markOutOfOffice(_: FormState, d: FormData): Promise<FormState> {
+  try {
+    await api("/out-of-office", { body: { date: s(d, "date"), from: s(d, "from"), to: s(d, "to"), reason: s(d, "reason") || undefined } });
+  } catch (e) {
+    return fail(e);
+  }
+  revalidatePath("/calendar");
+  return { ok: "Marked as out of office." };
+}
+
+// ───────── leave policy ─────────
+
+export async function saveQuota(_: FormState, d: FormData): Promise<FormState> {
+  try {
+    await api("/quotas", {
+      method: "PUT",
+      body: {
+        subject: s(d, "subject"), leaveTypeId: s(d, "leaveTypeId") || undefined, period: s(d, "period"),
+        amountDays: Number(s(d, "amountDays")), scopeType: s(d, "scopeType") || "COMPANY", scopeId: s(d, "scopeId") || undefined,
+      },
+    });
+  } catch (e) {
+    return fail(e);
+  }
+  revalidatePath("/settings/leave");
+  return { ok: "Quota saved." };
+}
+
+export async function addHoliday(_: FormState, d: FormData): Promise<FormState> {
+  try {
+    await api("/holidays", { body: { holidays: [{ name: s(d, "name"), date: s(d, "date") }] } });
+  } catch (e) {
+    return fail(e);
+  }
+  revalidatePath("/settings/leave");
+  return { ok: "Holiday added." };
+}
+
+export async function deleteHoliday(d: FormData) {
+  await api(`/holidays/${s(d, "id")}`, { method: "DELETE" }).catch(() => {});
+  revalidatePath("/settings/leave");
+}
