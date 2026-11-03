@@ -1,0 +1,16 @@
+{
+  "name": "@hr/db",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "generate": "prisma generate",
+    "validate": "prisma validate",
+    "migrate": "prisma migrate dev"
+  },
+  "devDependencies": {
+    "prisma": "7.10.1"
+  },
+  "dependencies": {
+    "@prisma/client": "7.10.1"
+  }
+}
