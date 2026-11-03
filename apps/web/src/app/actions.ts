@@ -312,3 +312,58 @@ export async function readAllNotifications() {
   await api("/notifications/read-all", { body: {} }).catch(() => {});
   revalidatePath("/notifications");
 }
+
+// ───────── payroll ─────────
+
+export async function createPayGroup(_: FormState, d: FormData): Promise<FormState> {
+  try {
+    await api("/pay-groups", { body: { name: s(d, "name"), payDay: Number(s(d, "payDay")), taxRegime: s(d, "taxRegime") || undefined } });
+  } catch (e) {
+    return fail(e);
+  }
+  revalidatePath("/payroll");
+  return { ok: "Pay group created." };
+}
+
+export async function saveSalary(_: FormState, d: FormData): Promise<FormState> {
+  const num = (k: string) => (s(d, k) === "" ? 0 : Number(s(d, k)));
+  const components = [
+    { code: "TRAVEL", label: "Travel allowance", value: num("travel"), taxable: false },
+    { code: "ALLOWANCE", label: "Allowance", value: num("allowance"), taxable: true },
+  ].filter((c) => c.value > 0).map((c) => ({ ...c, type: "fixed" }));
+  try {
+    await api(`/members/${s(d, "memberId")}/salary`, {
+      method: "PUT",
+      body: {
+        payGroupId: s(d, "payGroupId"), basic: num("basic"), components,
+        effectiveFrom: s(d, "effectiveFrom"),
+        taxProfile: {
+          ...(s(d, "taxCode") ? { taxCode: s(d, "taxCode").toUpperCase() } : {}),
+          ...(s(d, "niCategory") ? { niCategory: s(d, "niCategory") } : {}),
+          pensionOptOut: d.get("pensionOptOut") === "on",
+          claimRelief: d.get("noRelief") !== "on",
+        },
+      },
+    });
+  } catch (e) {
+    return fail(e);
+  }
+  revalidatePath("/payroll/salaries");
+  return { ok: "Salary saved." };
+}
+
+export async function createRun(_: FormState, d: FormData): Promise<FormState> {
+  let id: string;
+  try {
+    const r = await api<{ id: string }>("/payroll/runs", { body: { payGroupId: s(d, "payGroupId"), month: s(d, "month") } });
+    id = r.id;
+  } catch (e) {
+    return fail(e);
+  }
+  redirect(`/payroll/runs/${id}`);
+}
+
+export async function moveRun(d: FormData) {
+  await api(`/payroll/runs/${s(d, "id")}/${s(d, "step")}`, { body: {} }).catch(() => {});
+  revalidatePath(`/payroll/runs/${s(d, "id")}`);
+}

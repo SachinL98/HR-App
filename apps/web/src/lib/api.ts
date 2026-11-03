@@ -91,3 +91,24 @@ export interface Notice {
 }
 export interface AppNotification { id: string; event: string; title: string; body: string | null; link: string | null; readAt: string | null; createdAt: string }
 export interface NotificationList { items: AppNotification[]; unreadCount: number }
+
+export interface PayGroup { id: string; name: string; currency: string; payDay: number; taxRegime: "uk" | "lk" | null }
+export interface PayLine { code: string; label: string; kind: "earning" | "deduction" | "employer"; amount: number }
+export interface PayrollRun {
+  id: string; periodStart: string; periodEnd: string; status: "DRAFT" | "IN_REVIEW" | "APPROVED" | "FINALIZED";
+  ruleVersion: string | null; payGroup: { name: string; currency: string }; _count: { payslips: number };
+}
+export interface PayrollRunDetail extends Omit<PayrollRun, "_count"> {
+  payslips: { id: string; member: { id: string; firstName: string; lastName: string }; gross: number; net: number; unpaidDays: string; lines: PayLine[] }[];
+  totals: { gross: number; net: number; employerCost: number };
+}
+export interface SalaryRow {
+  memberId: string; member: { id: string; firstName: string; lastName: string }; payGroup: { id: string; name: string; currency: string };
+  basic: number; components: { code: string; label: string; type: string; value: number; taxable: boolean }[];
+  taxProfile: { taxCode?: string; niCategory?: string; pensionOptOut?: boolean; claimRelief?: boolean } | null; effectiveFrom: string;
+}
+export interface PayslipSummary { id: string; periodStart: string; periodEnd: string; currency: string; net: number }
+export interface PayslipDetail {
+  id: string; member: { id: string; firstName: string; lastName: string }; periodStart: string; periodEnd: string; currency: string;
+  status: string; unpaidDays: string; gross: number; net: number; lines: PayLine[]; ruleVersion: string | null;
+}

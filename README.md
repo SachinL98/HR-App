@@ -38,6 +38,7 @@ Do not run `npx prisma ...` from outside the repo's install: without `npm instal
 | --- | --- | --- |
 | `DATABASE_URL` | API (restricted `hr_app` role, RLS enforced) | `postgresql://hr_app:pw@localhost:5432/hr` |
 | `DATABASE_SYSTEM_URL` | API login and invite lookups only (`hr_system`, bypasses RLS) | `postgresql://hr_system:pw@localhost:5432/hr` |
+| `FIELD_ENCRYPTION_KEY` | API. Encrypts salaries and payslips. **Required in production**, 32 bytes base64 (`openssl rand -base64 32`) | dev-only value |
 | `JWT_SECRET` | API. **Required in production** | dev-only value |
 | `WEB_URL` | API (CORS, invite links) | `http://localhost:3000` |
 | `API_URL` | Web server | `http://localhost:4000` |
