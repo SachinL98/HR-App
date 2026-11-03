@@ -42,6 +42,11 @@ model Tenant {
   phone           String?
   website         String?
   brandPrimary    String?
+  // Admin-set UI theme applied to every member's web and mobile app
+  themePrimary    String   @default("#3B3FD8")
+  themeAccent     String   @default("#14B8A6")
+  themeMode       String   @default("system") // light | dark | system
+  themeRadius     String   @default("md") // sm | md | lg
   fiscalYearStart Int      @default(1) // month 1-12
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

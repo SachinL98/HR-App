@@ -1,0 +1,54 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hr
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run db:validate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/hr
+      # Migrations run as the database owner; the API then connects as the
+      # restricted hr_app role so row-level security is really in force.
+      - name: Migrate and apply roles and RLS
+        working-directory: packages/db
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/hr
+        run: |
+          npx prisma migrate deploy
+          psql -d hr -v ON_ERROR_STOP=1 -f sql/roles.sql
+          psql -d hr -v ON_ERROR_STOP=1 -f sql/rls.sql
+      - name: Generate Prisma client
+        run: npm run db:generate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/hr
+      - run: npm run lint
+      - run: npm run build
+      - run: npm test
+      - name: API end-to-end tests (real PostgreSQL, RLS on)
+        run: npm run test:e2e -w @hr/api
+        env:
+          DATABASE_URL: postgresql://hr_app:pw@localhost:5432/hr
+          DATABASE_SYSTEM_URL: postgresql://hr_system:pw@localhost:5432/hr
+      - run: npx tsc --noEmit
+        working-directory: apps/mobile
