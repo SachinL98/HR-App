@@ -46,5 +46,5 @@ erDiagram
 
 ## Verified
 
-- `prisma validate` passes and `prisma migrate dev` creates all 36 tables on PostgreSQL 16.
+- `prisma validate` passes and `prisma migrate dev` creates all 40 tables on PostgreSQL 16.
 - `sql/rls_test.sql` (run as `hr_app`): each tenant sees only its own departments and its own tenant row, no tenant set returns 0 rows, and a cross-tenant insert is rejected by policy.
