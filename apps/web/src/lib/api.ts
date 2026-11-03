@@ -56,3 +56,25 @@ export interface Department { id: string; name: string; parentId: string | null 
 export interface JobRole { id: string; name: string; description: string | null; defaultPermissions: string[] }
 export interface Grant { action: string; scopeType: "COMPANY" | "DEPARTMENT" | "MEMBER"; scopeIds: string[] }
 export interface PendingInvite { id: string; email: string; expiresAt: string }
+
+export interface Balance {
+  key: string; label: string; subject: "LEAVE" | "WFH"; leaveTypeId: string | null; period: string;
+  periodStart: string; periodEnd: string; entitled: number | null; used: number; pending: number; remaining: number | null;
+}
+export interface LeaveType { id: string; name: string; code: string; allowHalfDay: boolean; active: boolean }
+export interface RequestAction { id: string; decision: string; comment: string | null; createdAt: string; actor?: { firstName: string; lastName: string } }
+export interface LeaveRequest {
+  id: string; type: "LEAVE" | "WFH"; status: "PENDING" | "APPROVED" | "REJECTED" | "CANCELED" | "CHANGES_REQUESTED" | "DRAFT";
+  leaveTypeId: string | null; startDate: string; endDate: string; startPart: string; endPart: string; days: string | null;
+  reason: string | null; createdAt: string; currentStep: number; actions: RequestAction[];
+  requester?: { id: string; firstName: string; lastName: string };
+}
+export type DayType = "IN_OFFICE" | "WFH" | "LEAVE" | "HOLIDAY" | "OUT_OF_OFFICE" | "NON_WORKING";
+export interface CalendarData {
+  workWeek: number[]; timeZone: string;
+  members: { id: string; firstName: string; lastName: string; departmentId: string | null }[];
+  days: { memberId: string; date: string; part: string; type: DayType; startTime: string | null; endTime: string | null }[];
+  holidays: { id: string; name: string; date: string; departmentIds: string[] }[];
+}
+export interface Quota { id: string; subject: "LEAVE" | "WFH"; leaveTypeId: string | null; period: "MONTH" | "YEAR"; amountDays: string; scopeType: string; scopeId: string | null }
+export interface Holiday { id: string; name: string; date: string }

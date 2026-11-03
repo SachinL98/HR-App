@@ -9,13 +9,17 @@ import { logout } from "../actions";
 export const instant = false;
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  const [me, org] = await Promise.all([api<Me>("/me"), api<Org>("/org")]);
+  const [me, org, inbox] = await Promise.all([api<Me>("/me"), api<Org>("/org"), api<unknown[]>("/requests/inbox")]);
   const can = (p: string) => me.permissions.includes(p);
 
   const items: NavItem[] = [
     { href: "/dashboard", label: "Dashboard" },
+    { href: "/calendar", label: "Calendar" },
+    { href: "/leave", label: "Leave & WFH" },
+    { href: "/approvals", label: inbox.length ? `Approvals (${inbox.length})` : "Approvals" },
     { href: "/people", label: "People" },
   ];
+  if (can("quota.manage") || can("holiday.manage")) items.push({ href: "/settings/leave", label: "Leave policy" });
   if (can("role.manage")) items.push({ href: "/settings/roles", label: "Roles" });
   if (can("branding.manage")) items.push({ href: "/settings/appearance", label: "Appearance" });
 
