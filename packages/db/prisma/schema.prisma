@@ -1,0 +1,870 @@
+// HR App data model, v0.1 (3 Nov 2026). See docs/data-model.md.
+// Every tenant-owned table carries tenantId and is protected by
+// PostgreSQL row-level security (see packages/db/sql/rls.sql).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────────── Platform & billing ─────────────────────────────
+
+enum PlanTier {
+  FREE
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+model Tenant {
+  id              String   @id @default(uuid()) @db.Uuid
+  slug            String   @unique
+  legalName       String
+  displayName     String
+  logoFileId      String?  @db.Uuid
+  country         String   @db.Char(2)
+  timeZone        String
+  currency        String   @db.Char(3)
+  workWeek        Int[] // ISO weekdays, e.g. [1,2,3,4,5]
+  registrationNo  String?
+  taxNo           String?
+  phone           String?
+  website         String?
+  brandPrimary    String?
+  fiscalYearStart Int      @default(1) // month 1-12
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  subscription  Subscription?
+  addresses     Address[]
+  departments   Department[]
+  members       Member[]
+  jobRoles      JobRole[]
+  invites       Invite[]
+  holidays      Holiday[]
+  leaveTypes    LeaveType[]
+  quotaPolicies QuotaPolicy[]
+  workflows     ApprovalWorkflow[]
+  requests      Request[]
+  meetings      Meeting[]
+  notices       Notice[]
+  files         File[]
+  templates     DocumentTemplate[]
+  issuedDocs    IssuedDocument[]
+  seals         CompanySeal[]
+  payGroups     PayGroup[]
+  payrollRuns   PayrollRun[]
+  conversations Conversation[]
+  integrations  Integration[]
+  auditLogs     AuditLog[]
+  notifications Notification[]
+}
+
+model Subscription {
+  id                   String             @id @default(uuid()) @db.Uuid
+  tenantId             String             @unique @db.Uuid
+  tenant               Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tier                 PlanTier           @default(FREE)
+  status               SubscriptionStatus @default(TRIALING)
+  seats                Int                @default(5)
+  billingInterval      String             @default("month") // month | year
+  stripeCustomerId     String?            @unique
+  stripeSubscriptionId String?            @unique
+  trialEndsAt          DateTime?
+  currentPeriodEnd     DateTime?
+  updatedAt            DateTime           @updatedAt
+}
+
+// ───────────────────────────── Identity ─────────────────────────────
+
+// A login identity. One user can belong to several tenants via Member.
+model User {
+  id              String    @id @default(uuid()) @db.Uuid
+  email           String    @unique
+  emailVerified   DateTime?
+  passwordHash    String? // argon2id; null for SSO-only users
+  mfaEnabled      Boolean   @default(false)
+  isPlatformStaff Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  lastLoginAt     DateTime?
+
+  memberships Member[]
+  sessions    Session[]
+  devices     Device[]
+  identities  ExternalIdentity[]
+}
+
+model ExternalIdentity {
+  id       String @id @default(uuid()) @db.Uuid
+  userId   String @db.Uuid
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider String // google | microsoft | zoho | saml
+  subject  String
+
+  @@unique([provider, subject])
+}
+
+model Session {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId  String?   @db.Uuid
+  ip        String?
+  userAgent String?
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+}
+
+// A device holds push tokens and E2EE chat identity keys.
+model Device {
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @db.Uuid
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform       String // ios | android | web
+  pushToken      String?
+  identityKeyPub String? // E2EE public identity key
+  createdAt      DateTime  @default(now())
+  lastSeenAt     DateTime?
+}
+
+// ───────────────────────────── Organization ─────────────────────────────
+
+model Address {
+  id        String  @id @default(uuid()) @db.Uuid
+  tenantId  String  @db.Uuid
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  label     String // HQ, Colombo office, ...
+  line1     String
+  line2     String?
+  city      String
+  region    String?
+  postcode  String?
+  country   String  @db.Char(2)
+  isPrimary Boolean @default(false)
+
+  @@index([tenantId])
+}
+
+model Department {
+  id        String       @id @default(uuid()) @db.Uuid
+  tenantId  String       @db.Uuid
+  tenant    Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  parentId  String?      @db.Uuid
+  parent    Department?  @relation("DeptTree", fields: [parentId], references: [id])
+  children  Department[] @relation("DeptTree")
+  headId    String?      @db.Uuid
+  createdAt DateTime     @default(now())
+
+  members Member[]
+
+  @@unique([tenantId, name, parentId])
+  @@index([tenantId])
+}
+
+model JobRole {
+  id                 String   @id @default(uuid()) @db.Uuid
+  tenantId           String   @db.Uuid
+  tenant             Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name               String
+  description        String?
+  defaultPermissions String[] // permission actions granted at company scope by default
+
+  members Member[]
+
+  @@unique([tenantId, name])
+}
+
+enum MemberStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  LEFT
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERN
+}
+
+model Member {
+  id             String         @id @default(uuid()) @db.Uuid
+  tenantId       String         @db.Uuid
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId         String         @db.Uuid
+  user           User           @relation(fields: [userId], references: [id])
+  isOwner        Boolean        @default(false)
+  status         MemberStatus   @default(ACTIVE)
+  employeeNo     String?
+  firstName      String
+  lastName       String
+  preferredName  String?
+  photoFileId    String?        @db.Uuid
+  workEmail      String
+  phone          String?
+  departmentId   String?        @db.Uuid
+  department     Department?    @relation(fields: [departmentId], references: [id])
+  jobRoleId      String?        @db.Uuid
+  jobRole        JobRole?       @relation(fields: [jobRoleId], references: [id])
+  managerId      String?        @db.Uuid
+  manager        Member?        @relation("Reports", fields: [managerId], references: [id])
+  reports        Member[]       @relation("Reports")
+  employmentType EmploymentType @default(FULL_TIME)
+  startDate      DateTime?      @db.Date
+  endDate        DateTime?      @db.Date
+  workLocation   String?
+  defaultPattern Json? // e.g. {"5":"WFH"} weekday -> status
+  // Encrypted fields (application-level, envelope encrypted per tenant)
+  dateOfBirthEnc Bytes?
+  homeAddressEnc Bytes?
+  nationalIdEnc  Bytes?
+  bankDetailsEnc Bytes?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  emergencyContacts EmergencyContact[]
+  grants            PermissionGrant[]
+  requests          Request[]            @relation("Requester")
+  approvals         ApprovalAction[]
+  statuses          DayStatus[]
+  attendees         MeetingAttendee[]
+  organized         Meeting[]            @relation("Organizer")
+  balances          LeaveBalance[]
+  salary            SalaryStructure?
+  payslips          Payslip[]
+  issuedDocs        IssuedDocument[]     @relation("DocSubject")
+  participants      ConversationMember[]
+  notifications     Notification[]
+  noticeReads       NoticeRead[]
+
+  @@unique([tenantId, userId])
+  @@unique([tenantId, employeeNo])
+  @@index([tenantId, departmentId])
+}
+
+model EmergencyContact {
+  id           String  @id @default(uuid()) @db.Uuid
+  tenantId     String  @db.Uuid
+  memberId     String  @db.Uuid
+  member       Member  @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  name         String
+  relationship String
+  phone        String
+  altPhone     String?
+
+  @@index([tenantId, memberId])
+}
+
+model Invite {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @db.Uuid
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email        String
+  departmentId String?   @db.Uuid
+  jobRoleId    String?   @db.Uuid
+  managerId    String?   @db.Uuid
+  tokenHash    String    @unique
+  invitedById  String    @db.Uuid
+  expiresAt    DateTime
+  acceptedAt   DateTime?
+  revokedAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([tenantId, email])
+}
+
+// ───────────────────────────── Permissions ─────────────────────────────
+
+enum ScopeType {
+  COMPANY
+  DEPARTMENT
+  MEMBER
+}
+
+// e.g. action = "leave.approve", scopeType = DEPARTMENT, scopeIds = [engineeringId]
+model PermissionGrant {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  memberId    String    @db.Uuid
+  member      Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  action      String
+  scopeType   ScopeType
+  scopeIds    String[]  @db.Uuid
+  grantedById String    @db.Uuid
+  createdAt   DateTime  @default(now())
+
+  @@index([tenantId, memberId])
+  @@index([tenantId, action])
+}
+
+// ───────────────────────────── Calendar & availability ─────────────────────────────
+
+enum DayStatusType {
+  IN_OFFICE
+  WFH
+  LEAVE
+  HOLIDAY
+  OUT_OF_OFFICE
+  NON_WORKING
+}
+
+enum DayPart {
+  FULL
+  AM
+  PM
+}
+
+// Materialised per-member status used by the availability calendar.
+model DayStatus {
+  id        String        @id @default(uuid()) @db.Uuid
+  tenantId  String        @db.Uuid
+  memberId  String        @db.Uuid
+  member    Member        @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  date      DateTime      @db.Date
+  part      DayPart       @default(FULL)
+  type      DayStatusType
+  startTime DateTime? // for OUT_OF_OFFICE ranges
+  endTime   DateTime?
+  requestId String?       @db.Uuid
+  holidayId String?       @db.Uuid
+  note      String?
+
+  @@index([tenantId, date])
+  @@index([tenantId, memberId, date])
+}
+
+model Holiday {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name          String
+  date          DateTime @db.Date
+  departmentIds String[] @db.Uuid // empty = whole company
+  source        String   @default("manual") // manual | gov-uk | lk-gazette
+
+  @@unique([tenantId, date, name])
+}
+
+// ───────────────────────────── Meetings ─────────────────────────────
+
+model Meeting {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @db.Uuid
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  organizerId  String    @db.Uuid
+  organizer    Member    @relation("Organizer", fields: [organizerId], references: [id])
+  title        String
+  description  String?
+  startsAt     DateTime
+  endsAt       DateTime
+  timeZone     String
+  rrule        String?
+  location     String?
+  meetUrl      String?
+  externalIds  Json? // {"google":"...","zoho":"..."}
+  reminderMins Int[]     @default([10])
+  canceledAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  attendees MeetingAttendee[]
+
+  @@index([tenantId, startsAt])
+}
+
+enum Rsvp {
+  PENDING
+  YES
+  NO
+  MAYBE
+}
+
+model MeetingAttendee {
+  meetingId String  @db.Uuid
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  memberId  String  @db.Uuid
+  member    Member  @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  tenantId  String  @db.Uuid
+  rsvp      Rsvp    @default(PENDING)
+  viaGroup  String? // department id if added via a department
+
+  @@id([meetingId, memberId])
+  @@index([tenantId, memberId])
+}
+
+// ───────────────────────────── Leave, WFH, quotas ─────────────────────────────
+
+model LeaveType {
+  id                  String  @id @default(uuid()) @db.Uuid
+  tenantId            String  @db.Uuid
+  tenant              Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name                String
+  code                String
+  paid                Boolean @default(true)
+  allowHalfDay        Boolean @default(true)
+  countWeekends       Boolean @default(false)
+  attachmentAfterDays Int?
+  overQuota           String  @default("block") // block | flag
+  color               String?
+  active              Boolean @default(true)
+
+  @@unique([tenantId, code])
+}
+
+enum QuotaSubject {
+  LEAVE
+  WFH
+}
+
+enum QuotaPeriod {
+  MONTH
+  YEAR
+}
+
+// Most specific scope wins: MEMBER > DEPARTMENT > COMPANY.
+model QuotaPolicy {
+  id              String       @id @default(uuid()) @db.Uuid
+  tenantId        String       @db.Uuid
+  tenant          Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subject         QuotaSubject
+  leaveTypeId     String?      @db.Uuid
+  period          QuotaPeriod
+  amountDays      Decimal      @db.Decimal(5, 1)
+  scopeType       ScopeType
+  scopeId         String?      @db.Uuid
+  carryForwardMax Decimal?     @db.Decimal(5, 1)
+  accrual         String       @default("upfront") // upfront | monthly
+  prorateJoiners  Boolean      @default(true)
+  createdById     String       @db.Uuid
+
+  @@index([tenantId, subject])
+}
+
+model LeaveBalance {
+  id          String       @id @default(uuid()) @db.Uuid
+  tenantId    String       @db.Uuid
+  memberId    String       @db.Uuid
+  member      Member       @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  subject     QuotaSubject
+  leaveTypeId String?      @db.Uuid
+  periodStart DateTime     @db.Date
+  periodEnd   DateTime     @db.Date
+  entitled    Decimal      @db.Decimal(5, 1)
+  carried     Decimal      @default(0) @db.Decimal(5, 1)
+  used        Decimal      @default(0) @db.Decimal(5, 1)
+  pending     Decimal      @default(0) @db.Decimal(5, 1)
+
+  @@unique([memberId, subject, leaveTypeId, periodStart])
+}
+
+// ───────────────────────────── Requests & approvals ─────────────────────────────
+
+enum RequestType {
+  LEAVE
+  LEAVE_CANCEL
+  WFH
+  OUT_OF_OFFICE
+  DOCUMENT
+  PAYSLIP
+}
+
+enum RequestStatus {
+  DRAFT
+  PENDING
+  CHANGES_REQUESTED
+  APPROVED
+  REJECTED
+  CANCELED
+}
+
+model ApprovalWorkflow {
+  id          String      @id @default(uuid()) @db.Uuid
+  tenantId    String      @db.Uuid
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  requestType RequestType
+  name        String
+  // Ordered steps: [{"kind":"manager"|"dept_head"|"member"|"permission","memberId"?,"action"?,"escalateAfterHours"?}]
+  steps       Json
+  conditions  Json? // Platinum: e.g. {"minDays":5}
+  isDefault   Boolean     @default(true)
+
+  requests Request[]
+}
+
+// One table for every approvable request; type-specific fields live in `details`.
+model Request {
+  id            String            @id @default(uuid()) @db.Uuid
+  tenantId      String            @db.Uuid
+  tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  type          RequestType
+  status        RequestStatus     @default(PENDING)
+  requesterId   String            @db.Uuid
+  requester     Member            @relation("Requester", fields: [requesterId], references: [id])
+  workflowId    String?           @db.Uuid
+  workflow      ApprovalWorkflow? @relation(fields: [workflowId], references: [id])
+  currentStep   Int               @default(0)
+  leaveTypeId   String?           @db.Uuid
+  startDate     DateTime?         @db.Date
+  endDate       DateTime?         @db.Date
+  startPart     DayPart           @default(FULL)
+  endPart       DayPart           @default(FULL)
+  days          Decimal?          @db.Decimal(5, 1)
+  recurrence    String? // RRULE for recurring WFH
+  reason        String?
+  details       Json? // document type, purpose, OOO times, etc.
+  attachmentIds String[]          @db.Uuid
+  relatedId     String?           @db.Uuid // e.g. LEAVE_CANCEL -> original request
+  createdAt     DateTime          @default(now())
+  decidedAt     DateTime?
+
+  actions ApprovalAction[]
+
+  @@index([tenantId, status, type])
+  @@index([tenantId, requesterId])
+}
+
+enum ApprovalDecision {
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+  ESCALATED
+  COMMENT
+}
+
+model ApprovalAction {
+  id        String           @id @default(uuid()) @db.Uuid
+  tenantId  String           @db.Uuid
+  requestId String           @db.Uuid
+  request   Request          @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  step      Int
+  actorId   String           @db.Uuid
+  actor     Member           @relation(fields: [actorId], references: [id])
+  decision  ApprovalDecision
+  comment   String?
+  createdAt DateTime         @default(now())
+
+  @@index([tenantId, requestId])
+}
+
+// ───────────────────────────── Notices ─────────────────────────────
+
+model Notice {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  authorId      String    @db.Uuid
+  title         String
+  body          String // sanitized rich text (HTML)
+  important     Boolean   @default(false)
+  requireAck    Boolean   @default(false)
+  // Audience: {"all":true} or {"departments":[...],"roles":[...],"members":[...]}
+  audience      Json
+  attachmentIds String[]  @db.Uuid
+  publishAt     DateTime  @default(now())
+  expiresAt     DateTime?
+
+  reads NoticeRead[]
+
+  @@index([tenantId, publishAt])
+}
+
+model NoticeRead {
+  noticeId String    @db.Uuid
+  notice   Notice    @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  memberId String    @db.Uuid
+  member   Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  tenantId String    @db.Uuid
+  readAt   DateTime  @default(now())
+  ackAt    DateTime?
+
+  @@id([noticeId, memberId])
+}
+
+// ───────────────────────────── Notifications ─────────────────────────────
+
+model Notification {
+  id        String    @id @default(uuid()) @db.Uuid
+  tenantId  String    @db.Uuid
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  memberId  String    @db.Uuid
+  member    Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  event     String // e.g. "leave.approved"
+  title     String
+  body      String?
+  link      String?
+  channels  String[] // in_app, push, email, discord, whatsapp
+  sentAt    Json? // per channel timestamps / errors
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([tenantId, memberId, readAt])
+}
+
+model NotificationPreference {
+  memberId String   @db.Uuid
+  tenantId String   @db.Uuid
+  event    String
+  channels String[]
+
+  @@id([memberId, event])
+}
+
+// ───────────────────────────── Files ─────────────────────────────
+
+model File {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @db.Uuid
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ownerId    String?  @db.Uuid
+  storageKey String   @unique
+  fileName   String
+  mimeType   String
+  sizeBytes  BigInt
+  sha256     String
+  wrappedKey Bytes // data key encrypted by tenant KMS key
+  scanStatus String   @default("pending") // pending | clean | infected
+  purpose    String // avatar | attachment | template | seal | payslip | document | chat
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, purpose])
+}
+
+// ───────────────────────────── Documents ─────────────────────────────
+
+model DocumentTemplate {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  kind        String // payslip | confirmation | contract | offer | experience | salary_cert | custom
+  format      String   @default("docx") // docx | html
+  fileId      String?  @db.Uuid
+  html        String?
+  fields      String[] // merge fields found in the template
+  requestable Boolean  @default(false) // members may request it
+  version     Int      @default(1)
+  archived    Boolean  @default(false)
+  createdById String   @db.Uuid
+  updatedAt   DateTime @updatedAt
+
+  issued IssuedDocument[]
+
+  @@index([tenantId, kind])
+}
+
+model CompanySeal {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  kind        String // stamp | signature
+  label       String // e.g. "HR Manager signature"
+  signatoryId String?  @db.Uuid
+  fileId      String   @db.Uuid
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+model IssuedDocument {
+  id          String           @id @default(uuid()) @db.Uuid
+  tenantId    String           @db.Uuid
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  templateId  String           @db.Uuid
+  template    DocumentTemplate @relation(fields: [templateId], references: [id])
+  templateVer Int
+  subjectId   String           @db.Uuid
+  subject     Member           @relation("DocSubject", fields: [subjectId], references: [id])
+  requestId   String?          @db.Uuid
+  issuedById  String           @db.Uuid
+  fileId      String           @db.Uuid
+  sealIds     String[]         @db.Uuid
+  verifyCode  String           @unique
+  data        Json // merged values snapshot
+  revokedAt   DateTime?
+  issuedAt    DateTime         @default(now())
+
+  @@index([tenantId, subjectId])
+}
+
+// ───────────────────────────── Payroll ─────────────────────────────
+
+model PayGroup {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  currency  String   @db.Char(3)
+  frequency String   @default("monthly")
+  payDay    Int // day of month
+  taxRegime String? // null | uk | lk
+  createdAt DateTime @default(now())
+
+  structures SalaryStructure[]
+  runs       PayrollRun[]
+}
+
+model SalaryStructure {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  memberId      String   @unique @db.Uuid
+  member        Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  payGroupId    String   @db.Uuid
+  payGroup      PayGroup @relation(fields: [payGroupId], references: [id])
+  basicEnc      Bytes // encrypted decimal
+  // [{"code":"TRAVEL","label":"Travel","type":"fixed"|"percent","value":...,"taxable":true}]
+  componentsEnc Bytes
+  taxProfile    Json? // UK tax code, NI category; LK EPF no, etc.
+  effectiveFrom DateTime @db.Date
+}
+
+enum PayrollRunStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  FINALIZED
+}
+
+model PayrollRun {
+  id           String           @id @default(uuid()) @db.Uuid
+  tenantId     String           @db.Uuid
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payGroupId   String           @db.Uuid
+  payGroup     PayGroup         @relation(fields: [payGroupId], references: [id])
+  periodStart  DateTime         @db.Date
+  periodEnd    DateTime         @db.Date
+  status       PayrollRunStatus @default(DRAFT)
+  ruleVersion  String? // statutory rule table version used
+  approvedById String?          @db.Uuid
+  finalizedAt  DateTime?
+  createdAt    DateTime         @default(now())
+
+  payslips Payslip[]
+
+  @@unique([payGroupId, periodStart])
+}
+
+model Payslip {
+  id         String     @id @default(uuid()) @db.Uuid
+  tenantId   String     @db.Uuid
+  runId      String     @db.Uuid
+  run        PayrollRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  memberId   String     @db.Uuid
+  member     Member     @relation(fields: [memberId], references: [id])
+  linesEnc   Bytes // encrypted earnings/deductions/employer contributions
+  grossEnc   Bytes
+  netEnc     Bytes
+  unpaidDays Decimal    @default(0) @db.Decimal(5, 1)
+  documentId String?    @db.Uuid // IssuedDocument PDF
+  createdAt  DateTime   @default(now())
+
+  @@unique([runId, memberId])
+}
+
+// ───────────────────────────── Chat (E2EE) ─────────────────────────────
+
+enum ConversationKind {
+  COMPANY
+  DEPARTMENT
+  GROUP
+  DIRECT
+}
+
+model Conversation {
+  id            String           @id @default(uuid()) @db.Uuid
+  tenantId      String           @db.Uuid
+  tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  kind          ConversationKind
+  departmentId  String?          @db.Uuid
+  title         String?
+  avatarFileId  String?          @db.Uuid
+  createdById   String?          @db.Uuid
+  disappearSecs Int?
+  createdAt     DateTime         @default(now())
+
+  members  ConversationMember[]
+  messages Message[]
+
+  @@index([tenantId, kind])
+}
+
+model ConversationMember {
+  conversationId String       @db.Uuid
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  memberId       String       @db.Uuid
+  member         Member       @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  tenantId       String       @db.Uuid
+  isAdmin        Boolean      @default(false)
+  mutedUntil     DateTime?
+  lastReadSeq    BigInt       @default(0)
+  joinedAt       DateTime     @default(now())
+  leftAt         DateTime?
+
+  @@id([conversationId, memberId])
+  @@index([tenantId, memberId])
+}
+
+// Server stores ciphertext only. Search, previews and content are client-side.
+model Message {
+  id             String       @id @default(uuid()) @db.Uuid
+  tenantId       String       @db.Uuid
+  conversationId String       @db.Uuid
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  seq            BigInt
+  senderId       String       @db.Uuid
+  senderDeviceId String       @db.Uuid
+  ciphertext     Bytes
+  replyToId      String?      @db.Uuid
+  attachmentIds  String[]     @db.Uuid // encrypted blobs; keys inside ciphertext
+  editedAt       DateTime?
+  deletedAt      DateTime?
+  expiresAt      DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@unique([conversationId, seq])
+  @@index([tenantId, conversationId, createdAt])
+}
+
+// ───────────────────────────── Integrations ─────────────────────────────
+
+model Integration {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  provider    String // google | zoho_mail | zoho_calendar | discord | whatsapp | webhook
+  memberId    String?  @db.Uuid // null = company-level connection
+  status      String   @default("connected")
+  config      Json? // channel ids, sender address, event filters
+  secretsEnc  Bytes? // OAuth tokens / API keys, encrypted
+  connectedAt DateTime @default(now())
+
+  @@unique([tenantId, provider, memberId])
+}
+
+// ───────────────────────────── Audit ─────────────────────────────
+
+model AuditLog {
+  id         BigInt   @id @default(autoincrement())
+  tenantId   String   @db.Uuid
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actorId    String?  @db.Uuid
+  action     String // e.g. "permission.grant", "document.issue", "seal.use"
+  targetType String?
+  targetId   String?
+  ip         String?
+  meta       Json?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+}
