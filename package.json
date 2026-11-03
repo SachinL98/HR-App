@@ -1,15 +1,19 @@
 {
   "name": "hr-app",
   "private": true,
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev:web": "npm run dev -w @hr/web",
     "dev:api": "npm run start:dev -w @hr/api",
     "dev:mobile": "npm run start -w @hr/mobile",
     "build": "npm run build -w @hr/web && npm run build -w @hr/api",
-    "lint": "npm run lint -w @hr/web",
+    "lint": "npm run lint -w @hr/web && npm run lint:check -w @hr/api",
     "test": "npm test -w @hr/api",
     "db:validate": "npm run validate -w @hr/db",
-    "db:migrate": "npm run migrate -w @hr/db"
+    "db:migrate": "npm run migrate -w @hr/db",
+    "test:e2e": "npm run test:e2e -w @hr/api"
   }
 }
