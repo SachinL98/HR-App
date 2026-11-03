@@ -44,6 +44,8 @@ Company → Department → Member. Departments may nest (for example Engineering
 - **User profile:** photo, name, preferred name, employee ID, job role, department, manager, work email, phone, date of birth, address, start date, employment type, emergency contacts (name, relationship, phone, multiple allowed), bank details (encrypted, payroll only), national ID or NI number (encrypted).
 - Field visibility: members see colleagues' work fields only. Personal fields are visible to the member, HR admins and payroll.
 
+**Company theme.** Admins with `branding.manage` choose the company's primary and accent colours, light/dark/system mode and corner style. The choice applies to every member's web and mobile app. Text colour on the primary colour is picked automatically for readable contrast, and the editor warns when a colour is hard to read.
+
 ### 3.3 Availability calendar [2]
 
 - Views: day, week, month and year, on web and mobile. Filters: department, team, person, status type.
