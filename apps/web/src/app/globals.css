@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+/* Colour tokens. --primary / --accent / --ui-radius are set per company by the
+   admin's theme (see lib/theme.ts); surfaces switch with light / dark / system. */
+:root {
+  --primary: #3b3fd8;
+  --primary-fg: #ffffff;
+  --accent: #14b8a6;
+  --accent-fg: #111827;
+  --ui-radius: 10px;
+  --bg: #f6f7fb;
+  --surface: #ffffff;
+  --line: #e5e7ef;
+  --ink: #111827;
+  --muted: #5b6275;
+}
+[data-mode="dark"] {
+  --bg: #0e1118;
+  --surface: #161a24;
+  --line: #262c3b;
+  --ink: #eef0f6;
+  --muted: #9aa2b5;
+}
+@media (prefers-color-scheme: dark) {
+  [data-mode="system"] {
+    --bg: #0e1118;
+    --surface: #161a24;
+    --line: #262c3b;
+    --ink: #eef0f6;
+    --muted: #9aa2b5;
+  }
+}
+
+@theme inline {
+  --color-primary: var(--primary);
+  --color-primary-fg: var(--primary-fg);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --radius-ui: var(--ui-radius);
+  --font-sans: var(--font-geist-sans);
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
