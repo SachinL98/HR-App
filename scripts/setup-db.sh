@@ -11,7 +11,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-ADMIN_URL="${ADMIN_URL:-postgresql://localhost:5432/postgres}"
+# psql defaults to your OS username, but Prisma does not, so put it in the URL.
+ADMIN_URL="${ADMIN_URL:-postgresql://$(id -un)@localhost:5432/postgres}"
 DB_NAME="${DB_NAME:-hr}"
 # Same server, the new database. Handles an optional ?query string.
 DB_URL="$(printf '%s' "$ADMIN_URL" | sed -E "s#/[^/?]*(\?|$)#/${DB_NAME}\1#")"
