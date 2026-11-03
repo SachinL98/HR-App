@@ -38,6 +38,10 @@ jobs:
           npx prisma migrate deploy
           psql -d hr -v ON_ERROR_STOP=1 -f sql/roles.sql
           psql -d hr -v ON_ERROR_STOP=1 -f sql/rls.sql
+      - name: Generate Prisma client
+        run: npm run db:generate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/hr
       - run: npm run lint
       - run: npm run build
       - run: npm test

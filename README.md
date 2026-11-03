@@ -27,6 +27,7 @@ export DATABASE_URL=postgresql://hr_owner:pw@localhost:5432/hr
 npx prisma migrate deploy
 psql "$DATABASE_URL" -f sql/roles.sql -f sql/rls.sql
 cd ../..
+npm run db:generate   # builds the typed Prisma client
 
 # 2. Run everything
 npm run dev:api      # http://localhost:4000
