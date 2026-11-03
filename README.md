@@ -16,24 +16,23 @@ Multi-tenant HR SaaS: web app and iOS/Android app for company calendars, meeting
 
 ## Run it locally
 
-You need Node 22 and PostgreSQL 16.
+You need Node 22 and PostgreSQL 16 (macOS: `brew install postgresql@16 && brew services start postgresql@16`).
 
 ```bash
-npm install
-
-# 1. Database: migrate as the owner, then create the restricted roles and RLS policies
-cd packages/db
-export DATABASE_URL=postgresql://hr_owner:pw@localhost:5432/hr
-npx prisma migrate deploy
-psql "$DATABASE_URL" -f sql/roles.sql -f sql/rls.sql
-cd ../..
-npm run db:generate   # builds the typed Prisma client
-
-# 2. Run everything
+npm install          # first, always: it installs the pinned Prisma 7 CLI
+npm run db:setup     # creates the `hr` database, migrations, restricted roles, row-level security, Prisma client
 npm run dev:api      # http://localhost:4000
-npm run dev:web      # http://localhost:3000
+npm run dev:web      # http://localhost:3000   (in a second terminal)
 npm run dev:mobile   # Expo
 ```
+
+`db:setup` connects with your normal Postgres login (on macOS with Homebrew that is your own user, no password) and is safe to re-run. If your server needs a different admin login:
+
+```bash
+ADMIN_URL=postgresql://postgres:secret@localhost:5432/postgres npm run db:setup
+```
+
+Do not run `npx prisma ...` from outside the repo's install: without `npm install` first, npx downloads the latest Prisma (a different major version) and fails.
 
 | Variable | Used by | Default |
 | --- | --- | --- |
