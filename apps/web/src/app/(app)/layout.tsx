@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { api, type Me, type Org } from "@/lib/api";
+import { api, type Me, type NotificationList, type Org } from "@/lib/api";
 import { Themed } from "@/components/themed";
 import { Nav, type NavItem } from "@/components/nav";
 import { Button } from "@/components/ui";
@@ -9,7 +9,7 @@ import { logout } from "../actions";
 export const instant = false;
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  const [me, org, inbox] = await Promise.all([api<Me>("/me"), api<Org>("/org"), api<unknown[]>("/requests/inbox")]);
+  const [me, org, inbox, notes] = await Promise.all([api<Me>("/me"), api<Org>("/org"), api<unknown[]>("/requests/inbox"), api<NotificationList>("/notifications?unread=1")]);
   const can = (p: string) => me.permissions.includes(p);
 
   const items: NavItem[] = [
@@ -17,6 +17,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     { href: "/calendar", label: "Calendar" },
     { href: "/leave", label: "Leave & WFH" },
     { href: "/approvals", label: inbox.length ? `Approvals (${inbox.length})` : "Approvals" },
+    { href: "/notices", label: "Notices" },
+    { href: "/notifications", label: notes.unreadCount ? `Notifications (${notes.unreadCount})` : "Notifications" },
     { href: "/people", label: "People" },
   ];
   if (can("quota.manage") || can("holiday.manage")) items.push({ href: "/settings/leave", label: "Leave policy" });

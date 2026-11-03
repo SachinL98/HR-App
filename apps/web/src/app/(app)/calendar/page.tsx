@@ -1,10 +1,13 @@
 import Link from "next/link";
-import { api, type CalendarData, type Department, type Me } from "@/lib/api";
+import { connection } from "next/server";
+import { api, type CalendarData, type Department, type Me, type Meeting, type Org } from "@/lib/api";
+import { dayIn, timeIn } from "@/lib/tz";
 import { addDays, cellFor, eachDay, iso, isoWeekday, LABEL, parse, rangeFor, shift, SHORT, today, TONE, type View } from "@/lib/cal";
 import { ActionForm } from "@/components/action-form";
+import { MeetingForm } from "@/components/meeting-form";
 import { StatusLegend } from "@/components/status-legend";
 import { Card, Field, PageHeader } from "@/components/ui";
-import { markOutOfOffice } from "../../actions";
+import { cancelMeeting, createMeeting, markOutOfOffice, rsvpMeeting } from "../../actions";
 
 export const metadata = { title: "Calendar · HR App" };
 
@@ -13,6 +16,7 @@ const MONTHS = ["January", "February", "March", "April", "May", "June", "July", 
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export default async function CalendarPage({ searchParams }: { searchParams: Promise<{ view?: string; date?: string; dept?: string; who?: string }> }) {
+  await connection(); // the page depends on the current date, so render per request
   const sp = await searchParams;
   const view: View = VIEWS.includes(sp.view as View) ? (sp.view as View) : "month";
   const date = /^\d{4}-\d{2}-\d{2}$/.test(sp.date ?? "") ? sp.date! : today();
@@ -34,6 +38,15 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     }
     return `/calendar?${p}`;
   };
+  let meetings: Meeting[] = [];
+  let tz = "UTC";
+  if (view === "day") {
+    const org = await api<Org>("/org");
+    tz = org.timeZone;
+    const t = parse(date).getTime();
+    const found = await api<Meeting[]>(`/meetings?from=${new Date(t - 14 * 3600_000).toISOString()}&to=${new Date(t + 38 * 3600_000).toISOString()}`);
+    meetings = found.filter((m) => dayIn(m.startsAt, tz) === date);
+  }
   const d = parse(date);
   const title = view === "day" ? date : view === "week" ? `${range.from} to ${range.to}` : view === "month" ? `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}` : String(d.getUTCFullYear());
 
@@ -73,7 +86,49 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       <div className="grid gap-6 xl:grid-cols-[1fr_20rem]">
         <div className="min-w-0">
           {view === "day" && (
-            <Card className="p-0">
+            <Card>
+              <h2 className="mb-3 font-semibold">Meetings</h2>
+              {meetings.length === 0 && <p className="text-sm text-muted">No meetings you are part of on this day.</p>}
+              <ul className="space-y-3">
+                {meetings.map((m) => {
+                  const mine = m.attendees.find((a) => a.memberId === me.id);
+                  return (
+                    <li key={m.id} className="rounded-ui border border-line p-3 text-sm">
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <p className="font-medium">{m.title}</p>
+                        <p className="text-muted">{timeIn(m.startsAt, tz)}–{timeIn(m.endsAt, tz)} ({tz})</p>
+                      </div>
+                      <p className="mt-1 text-xs text-muted">
+                        Organized by {m.organizer.firstName} {m.organizer.lastName} · {m.attendees.length} invited
+                        {m.location ? ` · ${m.location}` : ""}
+                      </p>
+                      {m.meetUrl && <a href={m.meetUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-primary underline">Join video call</a>}
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        {mine && m.organizerId !== me.id && (
+                          <form action={rsvpMeeting} className="flex items-center gap-1">
+                            <input type="hidden" name="id" value={m.id} />
+                            {(["YES", "MAYBE", "NO"] as const).map((r) => (
+                              <button key={r} name="rsvp" value={r} aria-pressed={mine.rsvp === r}
+                                className={`rounded-ui border px-2.5 py-1 text-xs ${mine.rsvp === r ? "border-primary bg-primary text-primary-fg" : "border-line bg-surface"}`}>
+                                {r === "YES" ? "Going" : r === "MAYBE" ? "Maybe" : "Can't go"}
+                              </button>
+                            ))}
+                          </form>
+                        )}
+                        {(m.organizerId === me.id || me.permissions.includes("meeting.manage_all")) && (
+                          <form action={cancelMeeting}><input type="hidden" name="id" value={m.id} />
+                            <button className="rounded-ui border border-line px-2.5 py-1 text-xs text-red-600">Cancel meeting</button></form>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </Card>
+          )}
+          {view === "day" && (
+            <Card className="mt-6 p-0">
+              <h2 className="p-3 pb-0 font-semibold">Who is available</h2>
               <ul>
                 {data.members.map((m) => (
                   <li key={m.id} className="flex items-center justify-between gap-3 border-b border-line p-3 last:border-0">
@@ -149,6 +204,15 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
           )}
         </div>
 
+        <div className="space-y-6">
+        {view === "day" && (
+          <Card>
+            <h2 className="mb-3 font-semibold">Schedule a meeting</h2>
+            <MeetingForm action={createMeeting} date={date}
+              members={data.members.filter((m) => m.id !== me.id).map((m) => ({ id: m.id, name: `${m.firstName} ${m.lastName}` }))}
+              departments={departments.map((x) => ({ id: x.id, name: x.name }))} />
+          </Card>
+        )}
         <Card>
           <h2 className="mb-3 font-semibold">Out of office</h2>
           <p className="mb-3 text-sm text-muted">Going out during work hours? Let people know. No approval needed.</p>
@@ -160,6 +224,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
             </div>
           </ActionForm>
         </Card>
+        </div>
       </div>
     </>
   );

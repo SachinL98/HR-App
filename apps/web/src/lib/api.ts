@@ -43,7 +43,7 @@ export interface Me {
   departmentId: string | null; jobRole: { name: string } | null; permissions: string[];
 }
 export interface Org {
-  id: string; slug: string; displayName: string; legalName: string; country: string;
+  id: string; slug: string; displayName: string; legalName: string; country: string; timeZone: string;
   themePrimary: string; themeAccent: string; themeMode: "light" | "dark" | "system"; themeRadius: "sm" | "md" | "lg";
   subscription: { tier: string; status: string; seats: number; trialEndsAt: string | null } | null;
   trialDaysLeft: number | null;
@@ -78,3 +78,16 @@ export interface CalendarData {
 }
 export interface Quota { id: string; subject: "LEAVE" | "WFH"; leaveTypeId: string | null; period: "MONTH" | "YEAR"; amountDays: string; scopeType: string; scopeId: string | null }
 export interface Holiday { id: string; name: string; date: string }
+
+export interface Meeting {
+  id: string; title: string; description: string | null; startsAt: string; endsAt: string; timeZone: string;
+  location: string | null; meetUrl: string | null; organizerId: string;
+  organizer: { id: string; firstName: string; lastName: string };
+  attendees: { memberId: string; rsvp: "PENDING" | "YES" | "NO" | "MAYBE"; member: { id: string; firstName: string; lastName: string } }[];
+}
+export interface Notice {
+  id: string; title: string; body: string; important: boolean; requireAck: boolean; publishAt: string;
+  authorId: string; readAt: string | null; ackAt: string | null;
+}
+export interface AppNotification { id: string; event: string; title: string; body: string | null; link: string | null; readAt: string | null; createdAt: string }
+export interface NotificationList { items: AppNotification[]; unreadCount: number }
