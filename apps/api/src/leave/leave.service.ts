@@ -689,6 +689,7 @@ export class LeaveService {
         lastName: true,
         departmentId: true,
         managerId: true,
+        isOwner: true,
       },
     },
     actions: {
@@ -729,7 +730,6 @@ export class LeaveService {
         where: {
           status: 'PENDING',
           type: { in: ['LEAVE', 'WFH'] },
-          requesterId: { not: c.memberId },
         },
         orderBy: { createdAt: 'asc' },
         include: this.view,
@@ -740,6 +740,27 @@ export class LeaveService {
           out.push({ ...r, teamOff: await this.teamOff(tx, r) });
       return out;
     });
+  }
+
+  /**
+   * Nobody approves their own request, except a company owner with no manager and no other owner or cover:
+   * nobody else exists to decide it, so it would wait forever. They decide it themselves, and the history shows who did.
+   */
+  private async mustSelfApprove(
+    tx: Tx,
+    r: {
+      requesterId: string;
+      currentStep: number;
+      workflowId: string | null;
+      requester: {
+        departmentId: string | null;
+        managerId: string | null;
+        isOwner?: boolean;
+      };
+    },
+  ) {
+    if (!r.requester.isOwner) return false;
+    return (await this.approversFor(tx, r)).length === 0;
   }
 
   private async canDecide(
@@ -754,10 +775,11 @@ export class LeaveService {
         id: string;
         departmentId: string | null;
         managerId: string | null;
+        isOwner?: boolean;
       };
     },
   ) {
-    if (r.requesterId === c.memberId) return false;
+    if (r.requesterId === c.memberId) return this.mustSelfApprove(tx, r);
     if (r.type !== 'LEAVE' && r.type !== 'WFH') return false;
     // Anyone holding the approve permission for this person's scope can always act.
     if (
@@ -797,7 +819,12 @@ export class LeaveService {
           where: { id },
           include: {
             requester: {
-              select: { id: true, departmentId: true, managerId: true },
+              select: {
+                id: true,
+                departmentId: true,
+                managerId: true,
+                isOwner: true,
+              },
             },
           },
         });
@@ -805,7 +832,10 @@ export class LeaveService {
           throw new NotFoundException(
             'There is no pending request with that id',
           );
-        if (r.requesterId === c.memberId)
+        if (
+          r.requesterId === c.memberId &&
+          !(await this.mustSelfApprove(tx, r))
+        )
           throw new ForbiddenException('You cannot decide your own request');
         if (!(await this.canDecide(tx, c, r)))
           throw new ForbiddenException('You cannot decide this request');
