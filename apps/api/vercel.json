@@ -1,0 +1,12 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "cd ../.. && npm ci",
+  "buildCommand": "cd ../../packages/db && npx prisma generate && cd ../../apps/api && npx nest build",
+  "framework": null,
+  "outputDirectory": "public",
+  "rewrites": [{ "source": "/(.*)", "destination": "/api" }],
+  "functions": {
+    "api/index.js": { "includeFiles": "dist/**", "maxDuration": 60 }
+  },
+  "crons": [{ "path": "/cron/reminders", "schedule": "0 8 * * *" }]
+}

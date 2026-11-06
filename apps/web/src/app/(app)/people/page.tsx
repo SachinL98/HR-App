@@ -1,12 +1,15 @@
 import Link from "next/link";
 import { api, type Department, type JobRole, type Me, type Member, type PendingInvite } from "@/lib/api";
 import { ActionForm } from "@/components/action-form";
-import { Badge, Button, Card, Field, PageHeader, Select } from "@/components/ui";
-import { createDepartment, deleteDepartment, inviteMember, revokeInvite } from "../../actions";
+import { Avatar, Badge, Card, Empty, Field, LinkButton, PageHeader, RowAction, Select, Split, TableCard } from "@/components/ui";
+import { createDepartment, deleteDepartment, importPeople, inviteMember, revokeInvite } from "../../actions";
+import { getI18n } from "@/lib/i18n/server";
+import type { Key } from "@/lib/i18n";
 
-export const metadata = { title: "People · HR App" };
+export const metadata = { title: "People · Seamless Source HR" };
 
 export default async function People() {
+  const { t, tn } = await getI18n();
   const me = await api<Me>("/me");
   const can = (p: string) => me.permissions.includes(p);
   const [members, departments, roles, invites] = await Promise.all([
@@ -18,54 +21,59 @@ export default async function People() {
 
   return (
     <>
-      <PageHeader title="People" sub="Company → Department → Member" />
-      <div className="grid gap-6 xl:grid-cols-[1fr_22rem]">
-        <Card className="overflow-x-auto p-0">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-line text-xs uppercase text-muted">
-              <tr><th className="p-3">Name</th><th className="p-3">Department</th><th className="p-3">Role</th><th className="p-3">Status</th></tr>
-            </thead>
-            <tbody>
-              {members.map((m) => (
-                <tr key={m.id} className="border-b border-line last:border-0">
-                  <td className="p-3">
-                    {can("member.manage") || can("permission.grant")
-                      ? <Link className="font-medium text-primary underline" href={`/people/${m.id}`}>{m.firstName} {m.lastName}</Link>
-                      : <span className="font-medium">{m.firstName} {m.lastName}</span>}
-                    <div className="text-xs text-muted">{m.workEmail}</div>
+      <PageHeader title={t("people.title")} sub={t("people.summary", { people: tn("people.person", members.length), depts: tn("people.dept", departments.length) })}>
+        <LinkButton href="/people/chart" variant="ghost">{t("nav.orgChart")}</LinkButton>
+      </PageHeader>
+      <Split>
+        <TableCard>
+          <thead>
+            <tr><th>{t("people.name")}</th><th>{t("people.department")}</th><th>{t("people.jobRole")}</th><th>{t("people.status")}</th></tr>
+          </thead>
+          <tbody>
+            {members.map((m) => {
+              const name = `${m.firstName} ${m.lastName}`;
+              return (
+                <tr key={m.id}>
+                  <td>
+                    <div className="flex items-center gap-3">
+                      <Avatar name={name} />
+                      <div className="min-w-0">
+                        <Link className="link" href={`/people/${m.id}`}>{name}</Link>
+                        <div className="truncate text-xs text-muted">{m.workEmail}</div>
+                      </div>
+                    </div>
                   </td>
-                  <td className="p-3">{(m.departmentId && dept.get(m.departmentId)) || "—"}</td>
-                  <td className="p-3">{m.isOwner ? "Owner" : ((m.jobRoleId && role.get(m.jobRoleId)) || "—")}</td>
-                  <td className="p-3"><Badge tone={m.status === "ACTIVE" ? "good" : "warn"}>{m.status.toLowerCase()}</Badge></td>
+                  <td>{(m.departmentId && dept.get(m.departmentId)) || "—"}</td>
+                  <td>{m.isOwner ? t("people.owner") : ((m.jobRoleId && role.get(m.jobRoleId)) || "—")}</td>
+                  <td><Badge tone={m.status === "ACTIVE" ? "good" : "warn"}>{t(`people.state.${m.status}` as Key)}</Badge></td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
+              );
+            })}
+          </tbody>
+        </TableCard>
 
         <div className="space-y-6">
           {can("member.invite") && (
-            <Card>
-              <h2 className="mb-3 font-semibold">Invite someone</h2>
-              <ActionForm action={inviteMember} submit="Send invite">
-                <Field label="Email" name="email" type="email" required />
-                <Select label="Department" name="departmentId" defaultValue="">
-                  <option value="">None</option>
+            <Card title={t("people.invite")} sub={t("people.inviteSub")}>
+              <ActionForm action={inviteMember} submit={t("people.sendInvite")} block>
+                <Field label={t("people.email")} name="email" type="email" required />
+                <Select label={t("people.department")} name="departmentId" defaultValue="">
+                  <option value="">{t("common.none")}</option>
                   {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </Select>
-                <Select label="Company role" name="jobRoleId" defaultValue="">
-                  <option value="">None</option>
+                <Select label={t("people.jobRole")} name="jobRoleId" defaultValue="">
+                  <option value="">{t("common.none")}</option>
                   {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
                 </Select>
               </ActionForm>
               {invites.length > 0 && (
-                <div className="mt-4 border-t border-line pt-3">
-                  <p className="mb-2 text-xs font-medium uppercase text-muted">Pending</p>
+                <div className="mt-5 border-t border-line pt-4">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">{t("people.pending")}</p>
                   <ul className="space-y-2">
                     {invites.map((i) => (
                       <li key={i.id} className="flex items-center justify-between gap-2 text-sm">
                         <span className="truncate">{i.email}</span>
-                        <form action={revokeInvite}><input type="hidden" name="id" value={i.id} /><Button variant="ghost" type="submit" className="px-2 py-1 text-xs">Revoke</Button></form>
+                        <RowAction action={revokeInvite} id={i.id} label={t("people.revoke")} />
                       </li>
                     ))}
                   </ul>
@@ -74,31 +82,38 @@ export default async function People() {
             </Card>
           )}
 
-          <Card>
-            <h2 className="mb-3 font-semibold">Departments</h2>
-            <ul className="mb-4 space-y-2">
-              {departments.length === 0 && <li className="text-sm text-muted">No departments yet.</li>}
-              {departments.map((d) => (
-                <li key={d.id} className="flex items-center justify-between text-sm">
-                  <span>{d.parentId ? "↳ " : ""}{d.name}</span>
-                  {can("department.manage") && (
-                    <form action={deleteDepartment}><input type="hidden" name="id" value={d.id} /><Button variant="danger" type="submit" className="px-2 py-1 text-xs">Delete</Button></form>
-                  )}
-                </li>
-              ))}
-            </ul>
+          {can("member.invite") && (
+            <Card title={t("people.import")} sub={t("people.importSub")}>
+              <ActionForm action={importPeople} submit={t("people.importBtn")} block>
+                <input type="file" name="file" accept=".csv,text/csv" required aria-label="CSV file" className="input py-1.5 file:mr-3 file:rounded file:border-0 file:bg-surface-2 file:px-3 file:py-1 file:text-sm" />
+                <p className="text-xs text-muted">{t("people.importHelp")}</p>
+              </ActionForm>
+            </Card>
+          )}
+
+          <Card title={t("people.departments")}>
+            {departments.length === 0 ? <Empty>{t("people.noDepts")}</Empty> : (
+              <ul className="rows mb-4 -mx-1">
+                {departments.map((d) => (
+                  <li key={d.id} className="flex items-center justify-between gap-2 px-1 py-2 text-sm">
+                    <span className={d.parentId ? "pl-4 text-muted" : "font-medium"}>{d.parentId ? "↳ " : ""}{d.name}</span>
+                    {can("department.manage") && <RowAction action={deleteDepartment} id={d.id} label={t("people.delete")} variant="danger" />}
+                  </li>
+                ))}
+              </ul>
+            )}
             {can("department.manage") && (
-              <ActionForm action={createDepartment} submit="Add department">
-                <Field label="Name" name="name" required />
-                <Select label="Parent (optional)" name="parentId" defaultValue="">
-                  <option value="">Top level</option>
+              <ActionForm action={createDepartment} submit={t("people.addDept")} block>
+                <Field label={t("people.name")} name="name" required />
+                <Select label={t("people.parent")} name="parentId" defaultValue="">
+                  <option value="">{t("people.topLevel")}</option>
                   {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </Select>
               </ActionForm>
             )}
           </Card>
         </div>
-      </div>
+      </Split>
     </>
   );
 }

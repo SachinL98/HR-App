@@ -1,4 +1,5 @@
 import {
+  IsTimeZone,
   ArrayMaxSize,
   IsArray,
   IsDateString,
@@ -15,7 +16,7 @@ export class CreateMeetingDto {
   @IsOptional() @IsString() @Length(0, 2000) description?: string;
   @IsDateString() startsAt!: string;
   @IsDateString() endsAt!: string;
-  @IsOptional() @IsString() @Length(1, 60) timeZone?: string;
+  @IsOptional() @IsTimeZone() timeZone?: string;
   @IsOptional() @IsString() @Length(0, 200) location?: string;
   @IsOptional()
   @IsUrl({ protocols: ['https'], require_protocol: true })

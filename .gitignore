@@ -10,3 +10,5 @@ coverage/
 
 # Local file storage for generated documents
 .data/
+
+.vercel

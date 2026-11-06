@@ -1,60 +1,100 @@
 import type { ReactNode } from "react";
-import { api, type Me, type NotificationList, type Org } from "@/lib/api";
+import Link from "next/link";
+import { api, type AccountOverview, type Me, type NotificationList, type Org } from "@/lib/api";
 import { Themed } from "@/components/themed";
-import { Nav, type NavItem } from "@/components/nav";
-import { Button } from "@/components/ui";
+import { AppShell, type NavGroup } from "@/components/app-shell";
+import { Avatar, Button } from "@/components/ui";
+import { LogoMark } from "@/components/logo";
+import { PlanBanner } from "@/components/plan-banner";
 import { logout } from "../actions";
+import { getI18n } from "@/lib/i18n/server";
 
 // Everything under (app) is per-user and needs the session, so it renders on request.
 export const instant = false;
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  const [me, org, inbox, notes] = await Promise.all([api<Me>("/me"), api<Org>("/org"), api<unknown[]>("/requests/inbox"), api<NotificationList>("/notifications?unread=1")]);
+  const [me, org, inbox, notes, acct] = await Promise.all([api<Me>("/me"), api<Org>("/org"), api<unknown[]>("/requests/inbox"), api<NotificationList>("/notifications?unread=1"), api<AccountOverview>("/account")]);
   const can = (p: string) => me.permissions.includes(p);
+  const { t } = await getI18n();
 
-  const items: NavItem[] = [
-    { href: "/dashboard", label: "Dashboard" },
-    { href: "/calendar", label: "Calendar" },
-    { href: "/leave", label: "Leave & WFH" },
-    { href: "/approvals", label: inbox.length ? `Approvals (${inbox.length})` : "Approvals" },
-    { href: "/notices", label: "Notices" },
-    { href: "/notifications", label: notes.unreadCount ? `Notifications (${notes.unreadCount})` : "Notifications" },
-    { href: "/payslips", label: "Payslips" },
-    { href: "/documents", label: "Documents" },
-    { href: "/people", label: "People" },
+  const groups: NavGroup[] = [
+    { items: [{ href: "/dashboard", label: t("nav.home"), icon: "home" }] },
+    {
+      title: t("nav.timeOff"),
+      items: [
+        { href: "/calendar", label: t("nav.calendar"), icon: "calendar" },
+        { href: "/leave", label: t("nav.leave"), icon: "leave" },
+        { href: "/approvals", label: t("nav.approvals"), icon: "check", badge: inbox.length },
+      ],
+    },
+    {
+      title: t("nav.company"),
+      items: [
+        { href: "/notices", label: t("nav.notices"), icon: "megaphone" },
+        { href: "/people", label: t("nav.people"), icon: "users" },
+        { href: "/people/chart", label: t("nav.orgChart"), icon: "chart" },
+        { href: "/documents", label: t("nav.documents"), icon: "file" },
+      ],
+    },
+    {
+      title: t("nav.pay"),
+      items: [
+        { href: "/payslips", label: t("nav.payslips"), icon: "wallet" },
+        ...(can("payroll.view") || can("payroll.manage") ? [{ href: "/payroll", label: t("nav.payroll"), icon: "payroll" as const }] : []),
+      ],
+    },
   ];
-  if (can("payroll.view") || can("payroll.manage")) items.push({ href: "/payroll", label: "Payroll" });
-  if (can("document.issue") || can("document.template.manage") || can("document.request.approve")) items.push({ href: "/documents/manage", label: "Manage documents" });
-  if (can("quota.manage") || can("holiday.manage")) items.push({ href: "/settings/leave", label: "Leave policy" });
-  if (can("role.manage")) items.push({ href: "/settings/roles", label: "Roles" });
-  if (can("branding.manage")) items.push({ href: "/settings/appearance", label: "Appearance" });
+
+  const admin: NavGroup["items"] = [];
+  if (can("document.issue") || can("document.template.manage") || can("document.request.approve")) admin.push({ href: "/documents/manage", label: t("nav.manageDocuments"), icon: "folder" });
+  if (can("leave.approve")) admin.push({ href: "/settings/approvals", label: t("nav.approvalSteps"), icon: "check" });
+  if (can("quota.manage") || can("holiday.manage")) admin.push({ href: "/settings/leave", label: t("nav.leavePolicy"), icon: "sliders" });
+  if (can("role.manage")) admin.push({ href: "/settings/roles", label: t("nav.roles"), icon: "shield" });
+  if (can("checklist.manage")) admin.push({ href: "/settings/checklists", label: t("nav.checklists"), icon: "list" });
+  if (can("billing.manage") || me.isOwner) admin.push({ href: "/settings/billing", label: t("nav.billing"), icon: "wallet" });
+  if (can("audit.view")) admin.push({ href: "/settings/audit", label: t("nav.activity"), icon: "list" });
+  if (can("branding.manage")) admin.push({ href: "/settings/appearance", label: t("nav.appearance"), icon: "palette" });
+  if (admin.length) groups.push({ title: t("nav.admin"), items: admin });
+
+  const fullName = `${me.firstName} ${me.lastName}`;
+  const brand = (
+    <div className="flex min-w-0 items-center gap-3">
+      <LogoMark size={36} />
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold leading-tight">{org.displayName}</p>
+        <p className="truncate text-xs text-muted">Seamless Source HR</p>
+      </div>
+    </div>
+  );
+  const account = (
+    <div className="flex items-center gap-3">
+      <Link href="/account" className="flex min-w-0 flex-1 items-center gap-3 rounded-ui p-1 hover:bg-surface-2" title={t("nav.account")}>
+        <Avatar name={fullName} size={36} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium leading-tight">{fullName}</p>
+          <p className="truncate text-xs text-muted">{me.isOwner ? "Owner" : (me.jobRole?.name ?? "Member")}</p>
+        </div>
+      </Link>
+      <form action={logout}><Button variant="subtle" size="sm" type="submit">{t("common.signOut")}</Button></form>
+    </div>
+  );
 
   return (
     <Themed theme={org}>
-      <div className="mx-auto flex min-h-screen max-w-7xl flex-col md:flex-row">
-        <aside className="shrink-0 border-b border-line bg-surface p-4 md:w-60 md:border-b-0 md:border-r">
-          <div className="mb-4 flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-ui bg-primary text-sm font-bold text-primary-fg">
-              {org.displayName.slice(0, 1).toUpperCase()}
-            </div>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">{org.displayName}</p>
-              <p className="text-xs text-muted">{org.subscription?.tier.toLowerCase()} plan</p>
-            </div>
-          </div>
-          <Nav items={items} />
-        </aside>
-        <div className="min-w-0 flex-1">
-          <header className="flex items-center justify-end gap-3 border-b border-line bg-surface px-6 py-3">
-            <div className="text-right text-sm">
-              <p className="font-medium">{me.firstName} {me.lastName}</p>
-              <p className="text-xs text-muted">{me.isOwner ? "Owner" : (me.jobRole?.name ?? "Member")}</p>
-            </div>
-            <form action={logout}><Button variant="ghost" type="submit">Sign out</Button></form>
-          </header>
-          <main className="p-6">{children}</main>
-        </div>
-      </div>
+      <AppShell groups={groups} brand={brand} account={account} unread={notes.unreadCount}>
+        {(me.isOwner || can("billing.manage")) && org.plan && <PlanBanner plan={org.plan} trialDaysLeft={org.trialDaysLeft} t={t} />}
+        {acct.mailEnabled && !acct.emailVerified && (
+          <p role="status" className="mb-6 rounded-ui border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+            Please confirm your email address. We sent a link to {acct.email}.
+          </p>
+        )}
+        {(can("payroll.manage") || can("permission.grant") || me.isOwner) && !acct.mfaEnabled && (
+          <p role="status" className="mb-6 rounded-ui border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-200">
+            Your account can see or change sensitive data. <Link className="link" href="/account">Turn on two-factor sign-in</Link> to protect it.
+          </p>
+        )}
+        {children}
+      </AppShell>
     </Themed>
   );
 }

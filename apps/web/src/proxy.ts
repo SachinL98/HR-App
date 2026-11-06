@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const PUBLIC = ["/login", "/register", "/accept-invite", "/verify"];
+const PUBLIC = ["/login", "/register", "/accept-invite", "/verify", "/forgot-password", "/reset-password", "/check-email"];
 
 // Cheap gate: send people without a session cookie to the login page.
 // Real authorization happens in the API on every request.

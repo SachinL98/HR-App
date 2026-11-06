@@ -32,11 +32,11 @@ export function GrantEditor({ perms, departments, initial }: { perms: Perm[]; de
       {perms.map((p) => {
         const s = state[p.action];
         return (
-          <fieldset key={p.action} className="rounded-ui border border-line p-3">
-            <legend className="px-1 text-sm font-medium">{p.label}</legend>
+          <fieldset key={p.action} className="rounded-ui border border-line bg-surface-2 p-3">
+            <legend className="px-1 text-[13px] font-semibold">{p.label}</legend>
             <div className="flex flex-wrap gap-4 text-sm">
               {(["none", "company", "departments"] as Mode[]).map((m) => (
-                <label key={m} className="flex items-center gap-1.5">
+                <label key={m} className="flex cursor-pointer items-center gap-1.5">
                   <input type="radio" name={`mode-${p.action}`} checked={s.mode === m}
                     onChange={() => setState({ ...state, [p.action]: { ...s, mode: m } })} />
                   {m === "none" ? "No" : m === "company" ? "Whole company" : "Selected departments"}

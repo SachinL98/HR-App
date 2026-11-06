@@ -183,7 +183,16 @@ export class MeetingsService {
           rsvp: { not: 'NO' },
           meeting: { canceledAt: null, startsAt: { lt: b }, endsAt: { gt: a } },
         },
-        include: { meeting: { select: { id: true, title: true } } },
+        include: {
+          meeting: {
+            select: {
+              id: true,
+              title: true,
+              organizerId: true,
+              attendees: { select: { memberId: true } },
+            },
+          },
+        },
       });
       const days = await tx.dayStatus.findMany({
         where: {
@@ -194,9 +203,15 @@ export class MeetingsService {
       });
       return members.map((m) => ({
         member: m,
+        // Titles of meetings you are not part of stay private; you only learn the person is busy.
         meetings: clashes
           .filter((x) => x.memberId === m.id)
-          .map((x) => x.meeting),
+          .map((x) => {
+            const mine =
+              x.meeting.organizerId === c.memberId ||
+              x.meeting.attendees.some((a) => a.memberId === c.memberId);
+            return { id: x.meeting.id, title: mine ? x.meeting.title : 'Busy' };
+          }),
         status: days.filter((d) => d.memberId === m.id).map((d) => d.type),
         free:
           !clashes.some((x) => x.memberId === m.id) &&

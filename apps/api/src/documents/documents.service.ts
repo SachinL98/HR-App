@@ -7,14 +7,15 @@ import {
 } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { PDFDocument } from 'pdf-lib';
+import { Prisma } from '@prisma/client';
 import { PrismaService, Tx } from '../prisma/prisma.service';
 import type { Ctx } from '../common/ctx';
 import { can } from '../org/permissions';
 import { decryptJson } from '../common/field-crypto';
 import { notify } from '../notifications/notify';
 import { FileStore } from './file-store';
-import { FIELDS, fill, longDate, parse, slug } from './merge';
-import { renderPdf } from './pdf';
+import { FIELDS, OPTIONAL_FIELDS, fill, longDate, parse, slug } from './merge';
+import { renderPdf, type Layout, type PdfImage } from './pdf';
 import {
   DocDecisionDto,
   DocRequestDto,
@@ -79,9 +80,76 @@ export class DocumentsService {
     );
   }
 
+  /** Reads width and height from the PNG header so a tiny file cannot expand into a huge image in memory. */
+  private checkPngSize(bytes: Buffer, max: number) {
+    const sig = bytes.subarray(0, 8).toString('hex');
+    if (sig !== '89504e470d0a1a0a' || bytes.length < 24)
+      throw new BadRequestException(
+        'The file must be a valid PNG' + (max === 5000 ? ' or PDF' : ''),
+      );
+    const w = bytes.readUInt32BE(16);
+    const h = bytes.readUInt32BE(20);
+    if (!w || !h || w > max || h > max)
+      throw new BadRequestException(
+        `The image is too large (${w}x${h}). The most allowed is ${max}x${max} pixels.`,
+      );
+  }
+
+  /** Accepts a PNG or a PDF (first page is used) and rejects anything else before it is stored. */
+  private async letterhead(base64: string) {
+    const bytes = Buffer.from(base64, 'base64');
+    if (bytes.length > 1_400_000)
+      throw new BadRequestException(
+        'The letterhead is larger than 1.4 MB. Export it from Canva as a PNG at standard quality, or a compressed PDF.',
+      );
+    const isPdf = bytes.subarray(0, 5).toString('latin1') === '%PDF-';
+    if (!isPdf) this.checkPngSize(bytes, 5000);
+    try {
+      if (isPdf) {
+        // Embedding the first page is what rendering does, so an empty or broken page fails here, not on issue day.
+        const probe = await PDFDocument.create();
+        const src = await PDFDocument.load(bytes);
+        if (src.getPageCount() > 5)
+          throw new BadRequestException(
+            'The letterhead PDF has too many pages',
+          );
+        await probe.embedPdf(src, [0]);
+      } else await (await PDFDocument.create()).embedPng(bytes);
+    } catch {
+      throw new BadRequestException(
+        'The letterhead must be a PNG or a PDF exported from Canva (and the page must not be empty)',
+      );
+    }
+    return {
+      bytes,
+      mimeType: isPdf ? 'application/pdf' : 'image/png',
+      ext: isPdf ? 'pdf' : 'png',
+    };
+  }
+
+  private async saveLetterhead(
+    tx: Tx,
+    c: Ctx,
+    name: string,
+    base64: string,
+  ): Promise<string> {
+    const lh = await this.letterhead(base64);
+    const f = await this.files.put(tx, c.tenantId, {
+      ownerId: c.memberId,
+      purpose: 'letterhead',
+      fileName: `${slug(name)}-letterhead.${lh.ext}`,
+      mimeType: lh.mimeType,
+      bytes: lh.bytes,
+    });
+    return f.id;
+  }
+
   createTemplate(c: Ctx, dto: TemplateDto) {
     const p = this.check(dto.body);
     return this.prisma.withTenant(c.tenantId, async (tx) => {
+      const fileId = dto.letterheadBase64
+        ? await this.saveLetterhead(tx, c, dto.name, dto.letterheadBase64)
+        : undefined;
       const t = await tx.documentTemplate.create({
         data: {
           tenantId: c.tenantId,
@@ -91,6 +159,8 @@ export class DocumentsService {
           html: dto.body,
           fields: p.fields,
           requestable: dto.requestable ?? false,
+          fileId,
+          layout: dto.layout ? { ...dto.layout } : undefined,
           createdById: c.memberId,
         },
       });
@@ -107,14 +177,31 @@ export class DocumentsService {
       });
       if (!cur) throw new NotFoundException('Template not found');
       const changed = dto.body !== undefined && dto.body !== cur.html;
+      const newLetterhead = dto.letterheadBase64
+        ? await this.saveLetterhead(
+            tx,
+            c,
+            dto.name ?? cur.name,
+            dto.letterheadBase64,
+          )
+        : undefined;
+      const layoutChanged = dto.layout !== undefined;
       const t = await tx.documentTemplate.update({
         where: { id },
         data: {
           name: dto.name,
           requestable: dto.requestable,
-          ...(changed && p
-            ? { html: dto.body, fields: p.fields, version: cur.version + 1 }
+          ...(newLetterhead ? { fileId: newLetterhead } : {}),
+          ...(dto.removeLetterhead && !newLetterhead
+            ? { fileId: null, layout: Prisma.DbNull }
             : {}),
+          ...(layoutChanged && !dto.removeLetterhead
+            ? { layout: { ...dto.layout } }
+            : {}),
+          ...(newLetterhead || dto.removeLetterhead || layoutChanged || changed
+            ? { version: cur.version + 1 }
+            : {}),
+          ...(changed && p ? { html: dto.body, fields: p.fields } : {}),
         },
       });
       await this.audit(tx, c, 'document.template.update', id);
@@ -140,6 +227,7 @@ export class DocumentsService {
     const bytes = Buffer.from(dto.imageBase64, 'base64');
     if (bytes.length > 1_000_000)
       throw new BadRequestException('The image is larger than 1 MB');
+    this.checkPngSize(bytes, 2000);
     try {
       // Rejects anything that is not a real PNG before it is stored.
       const probe = await PDFDocument.create();
@@ -234,6 +322,7 @@ export class DocumentsService {
       'member.first_name': m.firstName,
       'member.last_name': m.lastName,
       'member.employee_no': m.employeeNo ?? '',
+      'member.national_id': '',
       'member.work_email': m.workEmail,
       'member.job_title': m.jobRole?.name ?? '',
       'member.department': m.department?.name ?? '',
@@ -246,6 +335,25 @@ export class DocumentsService {
       'company.legal_name': tenant.legalName,
       today: longDate(new Date()),
     };
+    if (t.fields.includes('member.national_id')) {
+      if (
+        !can(c.subject, 'member.manage', {
+          memberId: m.id,
+          departmentId: m.departmentId,
+        })
+      )
+        throw new ForbiddenException(
+          'This template includes a National ID, which needs access to manage this person',
+        );
+      if (!m.nationalIdEnc)
+        throw new BadRequestException(
+          'This person has no National ID (NIC) recorded. Add it on their profile in People.',
+        );
+      v['member.national_id'] = decryptJson<string>(
+        c.tenantId,
+        m.nationalIdEnc,
+      );
+    }
     const sensitive = t.fields.some((f) => f.startsWith('salary.'));
     if (sensitive) {
       if (!can(c.subject, 'payroll.view'))
@@ -265,15 +373,100 @@ export class DocumentsService {
       }).format(decryptJson<number>(c.tenantId, s.basicEnc));
       v['salary.currency'] = s.payGroup.currency;
     }
-    return { t, m, tenant, v, sensitive };
+    // Never print a letter with a hole in it ("holds the position of and ...").
+    const missing = t.fields
+      .filter((f) => !OPTIONAL_FIELDS.has(f) && !(v[f] ?? '').trim())
+      .map((f) => FIELDS[f as keyof typeof FIELDS] ?? f);
+    return { t, m, tenant, v, sensitive, missing };
+  }
+
+  /** Draws the filled letter on the template's letterhead (if it has one). */
+  private async draw(
+    tx: Tx,
+    c: Ctx,
+    t: {
+      name: string;
+      html: string | null;
+      fileId: string | null;
+      layout: Prisma.JsonValue;
+    },
+    tenant: { legalName: string },
+    v: Record<string, string>,
+    stamp: PdfImage | undefined,
+    signatures: PdfImage[],
+    code: string,
+  ) {
+    const base = process.env.WEB_URL ?? 'http://localhost:3000';
+    const letterhead = t.fileId
+      ? { bytes: (await this.files.get(tx, c.tenantId, t.fileId)).bytes }
+      : undefined;
+    return renderPdf({
+      company: tenant.legalName,
+      title: t.name,
+      body: fill(t.html ?? '', v, true),
+      stamp,
+      signatures,
+      verifyUrl: `${base}/verify/${code}`,
+      code,
+      letterhead,
+      layout: (t.layout ?? undefined) as Partial<Layout> | undefined,
+    });
+  }
+
+  /** A watermark-free look at the real thing, using the stamp and signatures on file. Nothing is saved. */
+  previewPdf(c: Ctx, dto: PreviewDto) {
+    return this.prisma.withTenant(c.tenantId, async (tx) => {
+      const { t, tenant, v } = await this.values(
+        tx,
+        c,
+        dto.templateId,
+        dto.memberId,
+      );
+      const p = parse(t.html ?? '');
+      const seals = await tx.companySeal.findMany({ where: { active: true } });
+      const grab = async (
+        s: { fileId: string; label: string },
+        key: string,
+      ): Promise<PdfImage> => ({
+        key,
+        label: s.label,
+        bytes: (await this.files.get(tx, c.tenantId, s.fileId)).bytes,
+      });
+      const stampSeal = p.stamp
+        ? seals.find((s) => s.kind === 'stamp')
+        : undefined;
+      const sigs: PdfImage[] = [];
+      for (const name of p.signatures) {
+        const s = seals.find(
+          (x) => x.kind === 'signature' && slug(x.label) === name,
+        );
+        if (s) sigs.push(await grab(s, name));
+      }
+      return this.draw(
+        tx,
+        c,
+        t,
+        tenant,
+        v,
+        stampSeal ? await grab(stampSeal, 'stamp') : undefined,
+        sigs,
+        'PREVIEW',
+      );
+    });
   }
 
   preview(c: Ctx, dto: PreviewDto) {
     return this.prisma.withTenant(c.tenantId, async (tx) => {
-      const { t, v } = await this.values(tx, c, dto.templateId, dto.memberId);
+      const { t, v, missing } = await this.values(
+        tx,
+        c,
+        dto.templateId,
+        dto.memberId,
+      );
       const p = parse(t.html ?? '');
       return {
         title: t.name,
+        missing,
         text: fill(t.html ?? '', v),
         needsStamp: p.stamp,
         needsSignatures: p.signatures,
@@ -283,12 +476,16 @@ export class DocumentsService {
 
   issue(c: Ctx, dto: IssueDto) {
     return this.prisma.withTenant(c.tenantId, async (tx) => {
-      const { t, m, tenant, v, sensitive } = await this.values(
+      const { t, m, tenant, v, sensitive, missing } = await this.values(
         tx,
         c,
         dto.templateId,
         dto.memberId,
       );
+      if (missing.length)
+        throw new BadRequestException(
+          `This letter cannot be issued yet. Missing for ${m.firstName}: ${missing.join(', ')}. Add it on their profile in People.`,
+        );
       const p = parse(t.html ?? '');
 
       const chosen = dto.sealIds?.length
@@ -332,21 +529,25 @@ export class DocumentsService {
         request = r;
       }
 
-      const grab = async (s: { fileId: string; label: string }) => ({
+      const grab = async (
+        s: { fileId: string; label: string },
+        key: string,
+      ): Promise<PdfImage> => ({
+        key,
         label: s.label,
         bytes: (await this.files.get(tx, c.tenantId, s.fileId)).bytes,
       });
       const code = newCode();
-      const base = process.env.WEB_URL ?? 'http://localhost:3000';
-      const pdf = await renderPdf({
-        company: tenant.legalName,
-        title: t.name,
-        body: fill(t.html ?? '', v),
-        stamp: stamp ? await grab(stamp) : undefined,
-        signatures: await Promise.all(sigs.map(grab)),
-        verifyUrl: `${base}/verify/${code}`,
+      const pdf = await this.draw(
+        tx,
+        c,
+        t,
+        tenant,
+        v,
+        stamp ? await grab(stamp, 'stamp') : undefined,
+        await Promise.all(sigs.map((s) => grab(s, slug(s.label)))),
         code,
-      });
+      );
       const file = await this.files.put(tx, c.tenantId, {
         ownerId: m.id,
         purpose: 'document',
@@ -355,9 +556,11 @@ export class DocumentsService {
         bytes: pdf,
       });
 
-      // The snapshot never keeps salary figures; they live in the (encrypted) PDF only.
+      // The snapshot never keeps salary figures or the National ID; they live in the (encrypted) PDF only.
       const snapshot = Object.fromEntries(
-        Object.entries(v).filter(([k]) => !k.startsWith('salary.')),
+        Object.entries(v).filter(
+          ([k]) => !k.startsWith('salary.') && k !== 'member.national_id',
+        ),
       );
       const doc = await tx.issuedDocument.create({
         data: {
@@ -370,7 +573,11 @@ export class DocumentsService {
           fileId: file.id,
           sealIds: chosen.map((s) => s.id),
           verifyCode: code,
-          data: { ...snapshot, containsSalary: sensitive },
+          data: {
+            ...snapshot,
+            containsSalary: sensitive,
+            containsNationalId: t.fields.includes('member.national_id'),
+          },
         },
       });
       if (request)
@@ -397,7 +604,8 @@ export class DocumentsService {
   list(c: Ctx, memberId?: string) {
     return this.prisma.withTenant(c.tenantId, async (tx) => {
       const issuer = can(c.subject, 'document.issue');
-      const rows = await tx.issuedDocument.findMany({
+      const payroll = can(c.subject, 'payroll.view');
+      const all = await tx.issuedDocument.findMany({
         where: {
           ...(issuer
             ? memberId
@@ -411,6 +619,11 @@ export class DocumentsService {
           template: { select: { name: true, kind: true } },
           subject: { select: { id: true, firstName: true, lastName: true } },
         },
+      });
+      // Letters with salary or a National ID stay private to the person and to people who may see that data.
+      const rows = all.filter((d) => {
+        const data = (d.data ?? {}) as Record<string, unknown>;
+        return d.subjectId === c.memberId || !(data.containsSalary && !payroll);
       });
       return rows.map((d) => ({
         id: d.id,
@@ -431,7 +644,16 @@ export class DocumentsService {
         include: { template: { select: { name: true } } },
       });
       const issuer = can(c.subject, 'document.issue');
-      if (!d || !(issuer || (d.subjectId === c.memberId && !d.revokedAt)))
+      const data = (d?.data ?? {}) as Record<string, unknown>;
+      const restricted =
+        !!data.containsSalary && !can(c.subject, 'payroll.view');
+      if (
+        !d ||
+        !(
+          (issuer && (!restricted || d.subjectId === c.memberId)) ||
+          (d.subjectId === c.memberId && !d.revokedAt)
+        )
+      )
         throw new NotFoundException('Document not found');
       const { bytes, file } = await this.files.get(tx, c.tenantId, d.fileId);
       if (d.subjectId !== c.memberId)

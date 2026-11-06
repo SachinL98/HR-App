@@ -236,7 +236,7 @@ describe('Phase 3a: payroll', () => {
     await api()
       .post(`/payroll/runs/${runId}/recompute`)
       .set(auth(o.token))
-      .expect(201);
+      .expect(409); // frozen once sent for approval
     await api()
       .post(`/payroll/runs/${runId}/approve`)
       .set(auth(o.token))

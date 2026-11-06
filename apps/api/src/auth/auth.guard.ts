@@ -29,12 +29,32 @@ export class AuthGuard implements CanActivate {
     const header = req.headers.authorization ?? '';
     if (!header.startsWith('Bearer ')) throw new UnauthorizedException();
 
-    let payload: { sub: string; mid: string; tid: string };
+    let payload: {
+      sub: string;
+      mid: string;
+      tid: string;
+      sid?: string;
+      purpose?: string;
+    };
     try {
       payload = await this.jwt.verifyAsync(header.slice(7));
     } catch {
       throw new UnauthorizedException();
     }
+
+    // Tokens must belong to a live session (this is what makes sign-out real), and the short-lived
+    // two-factor step token is never accepted here.
+    if (!payload.sid || payload.purpose) throw new UnauthorizedException();
+    const session = await this.prisma.system.session.findUnique({
+      where: { id: payload.sid },
+    });
+    if (
+      !session ||
+      session.userId !== payload.sub ||
+      session.revokedAt ||
+      session.expiresAt < new Date()
+    )
+      throw new UnauthorizedException();
 
     const member = await this.prisma.withTenant(payload.tid, (tx) =>
       tx.member.findUnique({
@@ -49,6 +69,7 @@ export class AuthGuard implements CanActivate {
       userId: payload.sub,
       memberId: member.id,
       tenantId: payload.tid,
+      sessionId: payload.sid,
       subject: {
         isOwner: member.isOwner,
         departmentId: member.departmentId,

@@ -53,6 +53,15 @@ export class SalaryDto {
   @Type(() => TaxProfileDto)
   taxProfile?: TaxProfileDto;
   @Matches(/^\d{4}-\d{2}-\d{2}$/) effectiveFrom!: string;
+  /** Why the pay is changing. Required when changing an existing salary. */
+  @IsOptional() @IsString() @Length(3, 200) reason?: string;
+}
+
+export class BankDto {
+  @IsString() @Length(1, 100) holder!: string;
+  @IsString() @Length(1, 100) bank!: string;
+  @IsOptional() @IsString() @Length(0, 60) branch?: string;
+  @IsString() @Length(4, 40) account!: string;
 }
 
 export class CreateRunDto {

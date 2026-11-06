@@ -95,19 +95,39 @@ model Subscription {
 
 // A login identity. One user can belong to several tenants via Member.
 model User {
-  id              String    @id @default(uuid()) @db.Uuid
-  email           String    @unique
-  emailVerified   DateTime?
-  passwordHash    String? // argon2id; null for SSO-only users
-  mfaEnabled      Boolean   @default(false)
-  isPlatformStaff Boolean   @default(false)
-  createdAt       DateTime  @default(now())
-  lastLoginAt     DateTime?
+  id                String    @id @default(uuid()) @db.Uuid
+  email             String    @unique
+  emailVerified     DateTime?
+  passwordHash      String? // argon2id; null for SSO-only users
+  mfaEnabled        Boolean   @default(false)
+  mfaSecretEnc      Bytes? // TOTP secret, encrypted; only trusted once mfaEnabled
+  mfaRecoveryHashes String[]  @default([]) // SHA-256 of one-time recovery codes
+  mfaLastStep       Int? // last accepted 30-second step, so a code cannot be replayed
+  passwordChangedAt DateTime?
+  locale            String? // preferred language: en | si | ta
+  isPlatformStaff   Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  lastLoginAt       DateTime?
 
   memberships Member[]
   sessions    Session[]
   devices     Device[]
   identities  ExternalIdentity[]
+  tokens      UserToken[]
+}
+
+// One-time links sent by email: verify an address or reset a password. Only a hash is stored.
+model UserToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      String // verify_email | reset_password
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, kind])
 }
 
 model ExternalIdentity {
@@ -255,6 +275,9 @@ model Member {
   participants      ConversationMember[]
   notifications     Notification[]
   noticeReads       NoticeRead[]
+  salaryChanges     SalaryChange[]
+  checklists        Checklist[]
+  documents         MemberDocument[]
 
   @@unique([tenantId, userId])
   @@unique([tenantId, employeeNo])
@@ -413,18 +436,22 @@ model MeetingAttendee {
 // ───────────────────────────── Leave, WFH, quotas ─────────────────────────────
 
 model LeaveType {
-  id                  String  @id @default(uuid()) @db.Uuid
-  tenantId            String  @db.Uuid
-  tenant              Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  name                String
-  code                String
-  paid                Boolean @default(true)
-  allowHalfDay        Boolean @default(true)
-  countWeekends       Boolean @default(false)
-  attachmentAfterDays Int?
-  overQuota           String  @default("block") // block | flag
-  color               String?
-  active              Boolean @default(true)
+  id                    String  @id @default(uuid()) @db.Uuid
+  tenantId              String  @db.Uuid
+  tenant                Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name                  String
+  code                  String
+  paid                  Boolean @default(true)
+  allowHalfDay          Boolean @default(true)
+  countWeekends         Boolean @default(false)
+  attachmentAfterDays   Int?
+  overQuota             String  @default("block") // block | flag
+  // Unused days from the previous year that roll over (0 = none), how many months into the new year they last (empty = never expire), and whether the yearly amount is available at once or builds up monthly.
+  carryOverMax          Decimal @default(0) @db.Decimal(4, 1)
+  carryOverExpiryMonths Int?
+  accrual               String  @default("upfront") // upfront | monthly
+  color                 String?
+  active                Boolean @default(true)
 
   @@unique([tenantId, code])
 }
@@ -643,8 +670,26 @@ model File {
   scanStatus String   @default("pending") // pending | clean | infected
   purpose    String // avatar | attachment | template | seal | payslip | document | chat
   createdAt  DateTime @default(now())
+  blob       FileBlob?
 
   @@index([tenantId, purpose])
+}
+
+/// Encrypted file bytes, used when FILE_STORAGE=db (hosts with no writable disk, such as Vercel).
+model FileBlob {
+  fileId   String @id @db.Uuid
+  file     File   @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  tenantId String @db.Uuid
+  data     Bytes
+}
+
+/// Shared sign-in / code failure counters, so lockouts hold across servers and restarts.
+model LoginThrottle {
+  key         String    @id
+  fails       Int       @default(0)
+  round       Int       @default(0)
+  lockedUntil DateTime?
+  updatedAt   DateTime  @updatedAt
 }
 
 // ───────────────────────────── Documents ─────────────────────────────
@@ -659,6 +704,7 @@ model DocumentTemplate {
   fileId      String?  @db.Uuid
   html        String?
   fields      String[] // merge fields found in the template
+  layout      Json? // letterhead page layout: margins, text size, colour, alignment (fileId holds the letterhead PNG/PDF)
   requestable Boolean  @default(false) // members may request it
   version     Int      @default(1)
   archived    Boolean  @default(false)
@@ -720,6 +766,24 @@ model PayGroup {
   runs       PayrollRun[]
 }
 
+// Every salary change, newest last. Append-only for the app role, so pay history cannot be rewritten.
+model SalaryChange {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  memberId      String   @db.Uuid
+  member        Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  changedById   String   @db.Uuid
+  payGroupId    String   @db.Uuid
+  basicEnc      Bytes
+  componentsEnc Bytes
+  taxProfile    Json?
+  effectiveFrom DateTime @db.Date
+  reason        String?
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId, memberId, createdAt])
+}
+
 model SalaryStructure {
   id            String   @id @default(uuid()) @db.Uuid
   tenantId      String   @db.Uuid
@@ -742,18 +806,23 @@ enum PayrollRunStatus {
 }
 
 model PayrollRun {
-  id           String           @id @default(uuid()) @db.Uuid
-  tenantId     String           @db.Uuid
-  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  payGroupId   String           @db.Uuid
-  payGroup     PayGroup         @relation(fields: [payGroupId], references: [id])
-  periodStart  DateTime         @db.Date
-  periodEnd    DateTime         @db.Date
-  status       PayrollRunStatus @default(DRAFT)
-  ruleVersion  String? // statutory rule table version used
-  approvedById String?          @db.Uuid
-  finalizedAt  DateTime?
-  createdAt    DateTime         @default(now())
+  id            String           @id @default(uuid()) @db.Uuid
+  tenantId      String           @db.Uuid
+  tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payGroupId    String           @db.Uuid
+  payGroup      PayGroup         @relation(fields: [payGroupId], references: [id])
+  periodStart   DateTime         @db.Date
+  periodEnd     DateTime         @db.Date
+  status        PayrollRunStatus @default(DRAFT)
+  ruleVersion   String? // statutory rule table version used
+  createdById   String?          @db.Uuid // who started the run
+  submittedById String?          @db.Uuid // who sent it for approval
+  submittedAt   DateTime?
+  approvedById  String?          @db.Uuid
+  approvedAt    DateTime?
+  finalizedById String?          @db.Uuid
+  finalizedAt   DateTime?
+  createdAt     DateTime         @default(now())
 
   payslips Payslip[]
 
@@ -872,4 +941,91 @@ model AuditLog {
   createdAt  DateTime @default(now())
 
   @@index([tenantId, createdAt])
+}
+
+// ───────────────────────────── People: checklists and personal documents ─────────────────────────────
+
+// A reusable list of tasks, for example "New starter" or "Leaving". items: [{ title, who: employee | manager | hr, dueDays }]
+model ChecklistTemplate {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  name      String
+  kind      String // onboarding | offboarding
+  items     Json
+  archived  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+// A template started for one person.
+model Checklist {
+  id          String          @id @default(uuid()) @db.Uuid
+  tenantId    String          @db.Uuid
+  memberId    String          @db.Uuid
+  member      Member          @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  name        String
+  kind        String
+  startedById String          @db.Uuid
+  createdAt   DateTime        @default(now())
+  tasks       ChecklistTask[]
+
+  @@index([tenantId, memberId])
+}
+
+model ChecklistTask {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  checklistId String    @db.Uuid
+  checklist   Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  title       String
+  who         String // employee | manager | hr
+  assigneeId  String?   @db.Uuid // null for "hr": anyone who manages checklists
+  dueDate     DateTime? @db.Date
+  position    Int
+  doneAt      DateTime?
+  doneById    String?   @db.Uuid
+
+  @@index([tenantId, assigneeId, doneAt])
+}
+
+// Contracts, certificates and similar files kept on a person's profile (the file itself is encrypted in File storage).
+model MemberDocument {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @db.Uuid
+  memberId        String   @db.Uuid
+  member          Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  title           String
+  kind            String // contract | id | certificate | other
+  fileId          String   @db.Uuid
+  visibleToMember Boolean  @default(true)
+  uploadedById    String   @db.Uuid
+  createdAt       DateTime @default(now())
+
+  @@index([tenantId, memberId])
+}
+
+// ───────────────────────────── Approvals: cover and calendar feeds ─────────────────────────────
+
+// While away, a person can let a colleague approve what would have come to them.
+model Delegation {
+  id        String    @id @default(uuid()) @db.Uuid
+  tenantId  String    @db.Uuid
+  fromId    String    @db.Uuid
+  toId      String    @db.Uuid
+  startsOn  DateTime  @db.Date
+  endsOn    DateTime  @db.Date
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([tenantId, toId, endsOn])
+}
+
+// A secret link for Google / Outlook / Apple Calendar to subscribe to. Only a hash is stored.
+model CalendarFeed {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  memberId  String   @unique @db.Uuid
+  tokenHash String   @unique
+  createdAt DateTime @default(now())
 }

@@ -8,9 +8,11 @@ import {
   Put,
 } from '@nestjs/common';
 import { CurrentCtx, RequirePermission } from '../common/ctx';
+import { Res, StreamableFile } from '@nestjs/common';
+import type { Response } from 'express';
 import type { Ctx } from '../common/ctx';
 import { PayrollService } from './payroll.service';
-import { CreateRunDto, PayGroupDto, SalaryDto } from './dto';
+import { BankDto, CreateRunDto, PayGroupDto, SalaryDto } from './dto';
 
 @Controller()
 export class PayrollController {
@@ -42,6 +44,12 @@ export class PayrollController {
     @Body() dto: SalaryDto,
   ) {
     return this.svc.setSalary(c, id, dto);
+  }
+
+  @Get('members/:id/salary/history')
+  @RequirePermission('payroll.view')
+  salaryHistory(@CurrentCtx() c: Ctx, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.salaryHistory(c, id);
   }
 
   @Get('payroll/runs')
@@ -90,6 +98,85 @@ export class PayrollController {
   @RequirePermission('payroll.manage')
   finalize(@CurrentCtx() c: Ctx, @Param('id', ParseUUIDPipe) id: string) {
     return this.svc.move(c, id, 'FINALIZED');
+  }
+
+  @Get('payroll/bank-status')
+  @RequirePermission('payroll.manage')
+  bankStatus(@CurrentCtx() c: Ctx) {
+    return this.svc.bankStatus(c);
+  }
+
+  @Put('members/:id/bank')
+  @RequirePermission('payroll.manage')
+  setBank(
+    @CurrentCtx() c: Ctx,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: BankDto,
+  ) {
+    return this.svc.setBank(c, id, dto);
+  }
+
+  @Get('payroll/runs/:id/export/summary')
+  @RequirePermission('payroll.view')
+  exportSummary(
+    @CurrentCtx() c: Ctx,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.csv(c, id, 'summary', res);
+  }
+
+  @Get('payroll/runs/:id/export/lines')
+  @RequirePermission('payroll.view')
+  exportLines(
+    @CurrentCtx() c: Ctx,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.csv(c, id, 'lines', res);
+  }
+
+  /** Bank account numbers are in this one, so it needs the manage permission. */
+  @Get('payroll/runs/:id/export/bank')
+  @RequirePermission('payroll.manage')
+  exportBank(
+    @CurrentCtx() c: Ctx,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.csv(c, id, 'bank', res);
+  }
+
+  private async csv(
+    c: Ctx,
+    id: string,
+    kind: 'summary' | 'lines' | 'bank',
+    res: Response,
+  ) {
+    const { csv, fileName } = await this.svc.exportRun(c, id, kind);
+    res.set({
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${fileName}"`,
+      'Cache-Control': 'private, no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    return new StreamableFile(Buffer.from(csv, 'utf8'));
+  }
+
+  @Get('payslips/:id/pdf')
+  async payslipPdf(
+    @CurrentCtx() c: Ctx,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { bytes, fileName } = await this.svc.payslipPdf(c, id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${fileName}"`,
+      'Cache-Control': 'private, no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    return new StreamableFile(bytes);
   }
 
   @Get('payslips/mine')

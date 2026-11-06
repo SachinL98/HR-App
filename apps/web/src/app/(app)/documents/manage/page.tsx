@@ -1,23 +1,20 @@
 import Link from "next/link";
 import { api, type DocPreview, type DocRequest, type DocTemplate, type IssuedDoc, type Member, type Seal } from "@/lib/api";
 import { ActionForm } from "@/components/action-form";
-import { Badge, Card, Field, PageHeader, Select } from "@/components/ui";
+import { Badge, Button, Card, Field, PageHeader, RowAction, Select } from "@/components/ui";
+import { LetterheadFields } from "@/components/letterhead-fields";
+import { TemplateForm } from "@/components/template-form";
 import { requireAny } from "@/lib/guard";
-import { addSeal, archiveTemplate, createTemplate, decideDocRequest, issueDocument, removeSeal, revokeDocument } from "../../../actions";
+import { addSeal, archiveTemplate, createTemplate, decideDocRequest, issueDocument, removeSeal, revokeDocument, updateLetterhead } from "../../../actions";
+import { getI18n } from "@/lib/i18n/server";
 
-export const metadata = { title: "Manage documents · HR App" };
+export const metadata = { title: "Manage documents · Seamless Source HR" };
 
-const STARTER = `To whom it may concern
 
-This letter confirms that {{member.full_name}} works at {{company.name}} as {{member.job_title}} in the {{member.department}} department, and has done so since {{member.start_date}}.
-
-Issued on {{today}}.
-
-{{signature.hr_manager}}
-{{stamp}}`;
 
 export default async function ManageDocuments({ searchParams }: { searchParams: Promise<{ templateId?: string; memberId?: string; requestId?: string }> }) {
   const sp = await searchParams;
+  const { t: tr } = await getI18n();
   const me = await requireAny("document.issue", "document.template.manage", "document.request.approve");
   const can = (p: string) => me.permissions.includes(p);
   const issuer = can("document.issue");
@@ -33,25 +30,22 @@ export default async function ManageDocuments({ searchParams }: { searchParams: 
 
   return (
     <>
-      <PageHeader title="Manage documents" sub="Templates, stamp and signatures, and issuing letters.">
-        <Link href="/documents" className="text-sm text-primary underline">← My documents</Link>
-      </PageHeader>
+      <PageHeader title={tr("md.title")} sub={tr("md.sub")} back={{ href: "/documents", label: tr("md.back") }} />
 
       {inbox.length > 0 && (
-        <Card className="mb-6">
-          <h2 className="mb-3 font-semibold">Requests waiting</h2>
+        <Card className="mb-6" title={tr("md.waiting")} sub={tr("md.toReview", { n: inbox.length })}>
           <ul className="space-y-3">
             {inbox.map((r) => (
-              <li key={r.id} className="rounded-ui border border-line p-3 text-sm">
-                <p><span className="font-medium">{r.requester.firstName} {r.requester.lastName}</span> asks for {r.details.templateName}{r.reason ? ` (${r.reason})` : ""}</p>
-                <ActionForm action={decideDocRequest} submit="Approve" className="mt-2 flex flex-wrap items-end gap-2">
+              <li key={r.id} className="rounded-ui border border-line bg-surface-2 p-4 text-sm">
+                <p><span className="font-medium">{tr("md.asks", { name: `${r.requester.firstName} ${r.requester.lastName}`, doc: r.details.templateName })}</span>{r.reason ? ` (${r.reason})` : ""}</p>
+                <ActionForm action={decideDocRequest} submit={tr("md.approve")} className="mt-2 flex flex-wrap items-end gap-2">
                   <input type="hidden" name="id" value={r.id} /><input type="hidden" name="decision" value="APPROVED" />
                 </ActionForm>
-                <ActionForm action={decideDocRequest} submit="Decline" variant="ghost" className="mt-2 flex flex-wrap items-end gap-2">
+                <ActionForm action={decideDocRequest} submit={tr("md.decline")} variant="ghost" className="mt-2 flex flex-wrap items-end gap-2">
                   <input type="hidden" name="id" value={r.id} /><input type="hidden" name="decision" value="REJECTED" />
-                  <input name="comment" required placeholder="Reason" className="rounded-ui border border-line bg-surface px-3 py-1.5" />
+                  <input name="comment" required placeholder={tr("md.reason")} aria-label={tr("md.reason")} className="input w-56" />
                 </ActionForm>
-                {issuer && <Link className="mt-2 inline-block text-primary underline" href={`/documents/manage?templateId=${r.details.templateId}&memberId=${r.requester.id}&requestId=${r.id}`}>Issue it</Link>}
+                {issuer && <Link className="link mt-2 inline-block" href={`/documents/manage?templateId=${r.details.templateId}&memberId=${r.requester.id}&requestId=${r.id}`}>{tr("md.issueIt")}</Link>}
               </li>
             ))}
           </ul>
@@ -59,85 +53,89 @@ export default async function ManageDocuments({ searchParams }: { searchParams: 
       )}
 
       {issuer && (
-        <Card className="mb-6">
-          <h2 className="mb-3 font-semibold">Issue a document</h2>
+        <Card className="mb-6" title={tr("md.issue")} sub={tr("md.issueSub")}>
           <form className="mb-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end" action="/documents/manage">
-            <Select label="Template" name="templateId" defaultValue={sp.templateId ?? ""} required><option value="" disabled>Choose…</option>{templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select>
-            <Select label="For" name="memberId" defaultValue={sp.memberId ?? ""} required><option value="" disabled>Choose…</option>{people.map((m) => <option key={m.id} value={m.id}>{m.firstName} {m.lastName}</option>)}</Select>
+            <Select label={tr("md.template")} name="templateId" defaultValue={sp.templateId ?? ""} required><option value="" disabled>{tr("md.choose")}</option>{templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select>
+            <Select label={tr("md.for")} name="memberId" defaultValue={sp.memberId ?? ""} required><option value="" disabled>{tr("md.choose")}</option>{people.map((m) => <option key={m.id} value={m.id}>{m.firstName} {m.lastName}</option>)}</Select>
             {sp.requestId && <input type="hidden" name="requestId" value={sp.requestId} />}
-            <button className="rounded-ui border border-line bg-surface px-4 py-2 text-sm">Preview</button>
+            <Button variant="ghost" type="submit">{tr("md.preview")}</Button>
           </form>
           {preview && "error" in preview && <p role="alert" className="text-sm text-red-600">{preview.error}</p>}
+          {preview && "text" in preview && preview.missing.length > 0 && (
+            <p role="alert" className="mb-4 rounded-ui border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+              {tr("md.cannotIssue", { what: preview.missing.join(", ") })} <Link className="link" href="/people">{tr("people.title")}</Link>
+            </p>
+          )}
           {preview && "text" in preview && (
             <>
-              <pre className="mb-4 max-h-72 overflow-auto whitespace-pre-wrap rounded-ui bg-bg p-4 font-sans text-sm">{preview.text}</pre>
-              <ActionForm action={issueDocument} submit="Issue as PDF">
+              <iframe title={tr("md.preview")} src={`/documents/preview/pdf?templateId=${sp.templateId}&memberId=${sp.memberId}#toolbar=0`}
+                className="mb-4 h-[46rem] w-full max-w-3xl rounded-ui border border-line bg-surface-2" />
+              <p className="-mt-2 mb-4 text-xs text-muted">{tr("md.previewNote")} <a className="link" href={`/documents/preview/pdf?templateId=${sp.templateId}&memberId=${sp.memberId}`} target="_blank" rel="noopener">{tr("md.openTab")}</a></p>
+              <ActionForm action={issueDocument} submit={tr("md.issueBtn")} variant={preview.missing.length ? "ghost" : undefined}>
                 <input type="hidden" name="templateId" value={sp.templateId} /><input type="hidden" name="memberId" value={sp.memberId} />
                 {sp.requestId && <input type="hidden" name="requestId" value={sp.requestId} />}
-                {(preview.needsStamp || preview.needsSignatures.length > 0) && <p className="text-sm font-medium">Apply</p>}
+                {(preview.needsStamp || preview.needsSignatures.length > 0) && <p className="text-sm font-medium">{tr("md.apply")}</p>}
                 {seals.filter((s) => (s.kind === "stamp" && preview.needsStamp) || (s.kind === "signature" && preview.needsSignatures.includes(s.token.slice(12, -2)))).map((s) => (
                   <label key={s.id} className="flex items-center gap-2 text-sm"><input type="checkbox" name="sealIds" value={s.id} defaultChecked /> {s.label}</label>
                 ))}
               </ActionForm>
             </>
           )}
-          <h3 className="mb-1 mt-6 text-sm font-semibold">Recently issued</h3>
-          <ul className="text-sm">
+          <h3 className="mb-2 mt-8 text-sm font-semibold">{tr("md.recent")}</h3>
+          <ul className="rows text-sm">
             {issued.slice(0, 15).map((d) => (
-              <li key={d.id} className="flex items-center justify-between gap-3 border-t border-line py-2">
-                <span>{d.name} · {d.subject.firstName} {d.subject.lastName} {d.revokedAt && <Badge tone="warn">revoked</Badge>}</span>
+              <li key={d.id} className="flex items-center justify-between gap-3 py-2.5">
+                <span>{d.name} · {d.subject.firstName} {d.subject.lastName} {d.revokedAt && <Badge tone="warn">{tr("md.revoked")}</Badge>}</span>
                 <span className="flex items-center gap-3">
-                  <a className="text-primary underline" href={`/documents/${d.id}/pdf`} target="_blank" rel="noopener">PDF</a>
-                  {!d.revokedAt && <form action={revokeDocument}><input type="hidden" name="id" value={d.id} /><button className="text-red-600 underline">Revoke</button></form>}
+                  <a className="link" href={`/documents/${d.id}/pdf`} target="_blank" rel="noopener">PDF</a>
+                  {!d.revokedAt && <RowAction action={revokeDocument} id={d.id} label={tr("md.revoke")} variant="danger" />}
                 </span>
               </li>
             ))}
-            {issued.length === 0 && <li className="text-muted">Nothing issued yet.</li>}
+            {issued.length === 0 && <li className="text-muted">{tr("md.nothingIssued")}</li>}
           </ul>
         </Card>
       )}
 
       {can("document.template.manage") && (
-        <div className="grid gap-6 xl:grid-cols-2">
-          <Card>
-            <h2 className="mb-3 font-semibold">Templates</h2>
-            <ul className="mb-4 space-y-1 text-sm">
+        <div className="grid items-start gap-6 xl:grid-cols-2">
+          <Card title={tr("md.templates")}>
+            <ul className="rows mb-5 text-sm">
               {templates.map((t) => (
-                <li key={t.id} className="flex items-center justify-between border-b border-line py-1.5">
-                  <span>{t.name} {t.requestable && <Badge tone="good">requestable</Badge>}</span>
-                  <form action={archiveTemplate}><input type="hidden" name="id" value={t.id} /><button className="text-red-600 underline">Archive</button></form>
+                <li key={t.id} className="py-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex flex-wrap items-center gap-2 font-medium">{t.name} {t.fileId && <Badge tone="info">{tr("md.hasLetterhead")}</Badge>} {t.requestable && <Badge tone="good">{tr("md.requestable")}</Badge>}</span>
+                    <span className="flex items-center gap-2"><Link href={`/documents/manage/templates/${t.id}`} className="link text-[13px]">{tr("md.editText")}</Link><RowAction action={archiveTemplate} id={t.id} label={tr("md.archive")} /></span>
+                  </div>
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-[13px] text-muted hover:text-ink">{t.fileId ? tr("md.changeLetterhead") : tr("md.addLetterhead")}</summary>
+                    <ActionForm action={updateLetterhead} submit={tr("md.saveLetterhead")} className="mt-3 space-y-3">
+                      <input type="hidden" name="id" value={t.id} />
+                      <LetterheadFields layout={t.layout} hasLetterhead={!!t.fileId} />
+                      {t.fileId && <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="removeLetterhead" /> {tr("md.removeLetterhead")}</label>}
+                    </ActionForm>
+                  </details>
                 </li>
               ))}
             </ul>
-            <ActionForm action={createTemplate} submit="Save template">
-              <Field label="Name" name="name" required maxLength={80} />
-              <Select label="Type" name="kind" defaultValue="confirmation">
-                <option value="confirmation">Employment confirmation</option><option value="experience">Experience letter</option><option value="offer">Offer</option>
-                <option value="contract">Contract</option><option value="salary_cert">Salary certificate</option><option value="custom">Other</option>
-              </Select>
-              <label className="block text-sm"><span className="mb-1 block font-medium">Text</span>
-                <textarea name="body" rows={9} required defaultValue={STARTER} className="w-full rounded-ui border border-line bg-surface px-3 py-2 font-mono text-xs" /></label>
-              <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="requestable" /> Employees can request this</label>
-              <p className="text-xs text-muted">Fields you can use: {fields.map((f) => `{{${f.name}}}`).join(" ")} {"{{stamp}} {{signature.name}}"}</p>
-            </ActionForm>
+            <TemplateForm action={createTemplate} fields={fields} />
           </Card>
-          <Card>
-            <h2 className="mb-3 font-semibold">Stamp and signatures</h2>
-            <ul className="mb-4 space-y-1 text-sm">
+          <Card title={tr("md.seals")}>
+            <ul className="rows mb-5 text-sm">
               {seals.map((s) => (
-                <li key={s.id} className="flex items-center justify-between border-b border-line py-1.5">
+                <li key={s.id} className="flex items-center justify-between gap-2 py-2">
                   <span>{s.label} <code className="text-xs text-muted">{s.token}</code></span>
-                  <form action={removeSeal}><input type="hidden" name="id" value={s.id} /><button className="text-red-600 underline">Remove</button></form>
+                  <RowAction action={removeSeal} id={s.id} label={tr("set.remove")} />
                 </li>
               ))}
-              {seals.length === 0 && <li className="text-muted">None yet.</li>}
+              {seals.length === 0 && <li className="text-muted">{tr("md.none")}</li>}
             </ul>
-            <ActionForm action={addSeal} submit="Upload">
-              <Select label="Kind" name="kind" defaultValue="stamp"><option value="stamp">Company stamp</option><option value="signature">Signature</option></Select>
-              <Field label="Label" name="label" required maxLength={60} placeholder="HR Manager" />
-              <Select label="Signature belongs to" name="signatoryId" defaultValue=""><option value="">(stamp: nobody)</option>{people.map((m) => <option key={m.id} value={m.id}>{m.firstName} {m.lastName}</option>)}</Select>
-              <label className="block text-sm"><span className="mb-1 block font-medium">PNG image</span><input type="file" name="image" accept="image/png" required className="w-full text-sm" />
-                <span className="mt-1 block text-xs text-muted">A transparent background looks best. Stored encrypted.</span></label>
+            <ActionForm action={addSeal} submit={tr("md.upload")}>
+              <Select label={tr("md.kind")} name="kind" defaultValue="stamp"><option value="stamp">{tr("md.stamp")}</option><option value="signature">{tr("md.signature")}</option></Select>
+              <Field label={tr("md.label")} name="label" required maxLength={60} placeholder="HR Manager" />
+              <Select label={tr("md.signatory")} name="signatoryId" defaultValue=""><option value="">{tr("md.stampNobody")}</option>{people.map((m) => <option key={m.id} value={m.id}>{m.firstName} {m.lastName}</option>)}</Select>
+              <label className="block text-sm"><span className="mb-1.5 block text-[13px] font-medium">{tr("md.png")}</span><input type="file" name="image" accept="image/png" required className="input py-1.5 file:mr-3 file:rounded file:border-0 file:bg-surface-2 file:px-3 file:py-1 file:text-sm" />
+                <span className="mt-1 block text-xs text-muted">{tr("md.pngHint")}</span></label>
             </ActionForm>
           </Card>
         </div>

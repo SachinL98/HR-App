@@ -5,6 +5,7 @@ import {
   IsEmail,
   IsIn,
   IsOptional,
+  IsTimeZone,
   IsString,
   IsUUID,
   Length,
@@ -51,6 +52,10 @@ export class UpdateMemberDto {
   @IsOptional() @IsUUID() managerId?: string | null;
   @IsOptional() @IsIn(['ACTIVE', 'SUSPENDED', 'LEFT']) status?:
     'ACTIVE' | 'SUSPENDED' | 'LEFT';
+  /** Used in letters. Empty string clears it. */
+  @IsOptional() @IsString() @Length(0, 40) employeeNo?: string;
+  @IsOptional() @IsString() @Length(0, 10) startDate?: string; // YYYY-MM-DD or empty
+  @IsOptional() @IsString() @Length(0, 40) nationalId?: string; // stored encrypted
 }
 
 export class GrantDto {
@@ -72,5 +77,5 @@ export class ProfileDto {
   @IsOptional() @IsString() @Length(2, 160) legalName?: string;
   @IsOptional() @IsString() @Length(0, 40) phone?: string;
   @IsOptional() @IsString() @Length(0, 200) website?: string;
-  @IsOptional() @IsString() @Length(2, 60) timeZone?: string;
+  @IsOptional() @IsTimeZone() timeZone?: string;
 }

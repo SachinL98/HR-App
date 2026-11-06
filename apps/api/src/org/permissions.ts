@@ -7,6 +7,7 @@ export const PERMISSIONS = {
   'member.invite': 'Invite members',
   'member.manage': 'Edit and deactivate members',
   'department.manage': 'Manage departments',
+  'checklist.manage': 'Manage onboarding and offboarding checklists',
   'role.manage': 'Manage company roles',
   'permission.grant': 'Grant permissions to others',
   'payroll.manage': 'Set up and run payroll',

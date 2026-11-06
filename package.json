@@ -16,6 +16,7 @@
     "db:migrate": "npm run migrate -w @hr/db",
     "test:e2e": "npm run test:e2e -w @hr/api",
     "db:generate": "npm run generate -w @hr/db",
-    "db:setup": "bash scripts/setup-db.sh"
+    "db:setup": "bash scripts/setup-db.sh",
+    "db:deploy": "bash scripts/deploy-db.sh"
   }
 }

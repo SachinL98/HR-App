@@ -14,16 +14,17 @@ import {
   Put,
 } from '@nestjs/common';
 import { PrismaService, Tx } from '../prisma/prisma.service';
+import { encryptJson } from '../common/field-crypto';
 import { CurrentCtx, RequirePermission } from '../common/ctx';
 import type { Ctx } from '../common/ctx';
 import { ThemeDto } from '../auth/dto';
 import { MailService } from '../auth/mail.service';
 import { hashToken, newToken } from '../auth/auth.service';
+import { planOf } from './plan';
 import {
   can,
   isPermission,
   PERMISSIONS,
-  PLAN_LIMITS,
   PermissionAction,
 } from './permissions';
 import {
@@ -60,6 +61,8 @@ const memberView = {
   status: true,
   isOwner: true,
   photoFileId: true,
+  employeeNo: true,
+  startDate: true,
 } as const;
 
 @Controller()
@@ -81,7 +84,19 @@ export class OrgController {
       const permissions = (
         Object.keys(PERMISSIONS) as PermissionAction[]
       ).filter((a) => can(c.subject, a));
-      return { ...m, permissions };
+      const u = await this.prisma.system.user.findUniqueOrThrow({
+        where: { id: c.userId },
+        select: { emailVerified: true, mfaEnabled: true, locale: true },
+      });
+      return {
+        ...m,
+        permissions,
+        account: {
+          emailVerified: !!u.emailVerified,
+          mfaEnabled: u.mfaEnabled,
+          locale: u.locale,
+        },
+      };
     });
   }
 
@@ -111,6 +126,8 @@ export class OrgController {
               status: true,
               seats: true,
               trialEndsAt: true,
+              currentPeriodEnd: true,
+              updatedAt: true,
             },
           },
         },
@@ -119,7 +136,26 @@ export class OrgController {
       const trialDaysLeft = end
         ? Math.max(0, Math.ceil((end.getTime() - Date.now()) / 86400_000))
         : null;
-      return { ...t, trialDaysLeft };
+      const sub = t.subscription;
+      const plan = sub ? planOf(sub) : null;
+      const used = plan
+        ? await tx.member.count({
+            where: { status: { in: ['ACTIVE', 'INVITED'] } },
+          })
+        : 0;
+      return {
+        ...t,
+        trialDaysLeft,
+        // What the company can use right now, once a lapsed trial or payment is taken into account.
+        plan: plan && {
+          tier: plan.tier,
+          chosen: plan.chosen,
+          state: plan.state,
+          graceEndsAt: plan.graceEndsAt,
+          seatLimit: plan.seatLimit,
+          seatsUsed: used,
+        },
+      };
     });
   }
 
@@ -270,6 +306,15 @@ export class OrgController {
     }
   }
 
+  /** A role carries admin powers, so handing it to someone is handing out those powers. */
+  private async checkRoleAssignable(c: Ctx, tx: Tx, jobRoleId: string) {
+    const role = await this.mustExist(
+      tx.jobRole.findFirst({ where: { id: jobRoleId } }),
+      'Role',
+    );
+    this.checkPerms(c, role.defaultPermissions);
+  }
+
   @Post('roles')
   @RequirePermission('role.manage')
   createRole(@CurrentCtx() c: Ctx, @Body() dto: JobRoleDto) {
@@ -349,11 +394,15 @@ export class OrgController {
           tx.department.findFirst({ where: { id: dto.departmentId } }),
           'Department',
         );
-      if (dto.jobRoleId)
-        await this.mustExist(
-          tx.jobRole.findFirst({ where: { id: dto.jobRoleId } }),
-          'Role',
+      if (
+        id === c.memberId &&
+        !c.subject.isOwner &&
+        (dto.jobRoleId !== undefined || dto.managerId !== undefined)
+      )
+        throw new ForbiddenException(
+          'You cannot change your own job role or line manager',
         );
+      if (dto.jobRoleId) await this.checkRoleAssignable(c, tx, dto.jobRoleId);
       if (dto.managerId) {
         if (dto.managerId === id)
           throw new BadRequestException('A member cannot manage themselves');
@@ -362,12 +411,37 @@ export class OrgController {
           'Manager',
         );
       }
+      const { nationalId, startDate, employeeNo, ...plain } = dto;
+      if (startDate && !/^\d{4}-\d{2}-\d{2}$/.test(startDate))
+        throw new BadRequestException('Start date must look like 2023-08-15');
       const updated = await tx.member.update({
         where: { id },
-        data: dto,
+        data: {
+          ...plain,
+          ...(employeeNo !== undefined
+            ? { employeeNo: employeeNo.trim() || null }
+            : {}),
+          ...(startDate !== undefined
+            ? {
+                startDate: startDate
+                  ? new Date(`${startDate}T00:00:00Z`)
+                  : null,
+              }
+            : {}),
+          ...(nationalId !== undefined
+            ? {
+                nationalIdEnc: nationalId.trim()
+                  ? encryptJson(c.tenantId, nationalId.trim())
+                  : null,
+              }
+            : {}),
+        },
         select: memberView,
       });
-      await audit(tx, c, 'member.update', id, dto);
+      await audit(tx, c, 'member.update', id, {
+        ...dto,
+        nationalId: dto.nationalId !== undefined ? '(changed)' : undefined,
+      });
       return updated;
     });
   }
@@ -498,10 +572,13 @@ export class OrgController {
           expiresAt: { gt: new Date() },
         },
       });
-      const limit = Math.min(sub.seats, PLAN_LIMITS[sub.tier].seats);
+      const plan = planOf(sub);
+      const limit = plan.seatLimit;
       if (used + pending >= limit)
         throw new ConflictException(
-          `Your ${sub.tier.toLowerCase()} plan allows ${limit} users. Upgrade to invite more.`,
+          plan.state === 'trial_ended' || plan.state === 'canceled'
+            ? `Your plan has ended, so you are on the Free plan, which allows ${limit} users. Choose a plan to invite more.`
+            : `Your ${plan.tier.toLowerCase()} plan allows ${limit} users. Upgrade to invite more.`,
         );
       if (
         await tx.member.findFirst({
@@ -515,11 +592,7 @@ export class OrgController {
           tx.department.findFirst({ where: { id: dto.departmentId } }),
           'Department',
         );
-      if (dto.jobRoleId)
-        await this.mustExist(
-          tx.jobRole.findFirst({ where: { id: dto.jobRoleId } }),
-          'Role',
-        );
+      if (dto.jobRoleId) await this.checkRoleAssignable(c, tx, dto.jobRoleId);
       if (dto.managerId)
         await this.mustExist(
           tx.member.findFirst({ where: { id: dto.managerId } }),
@@ -543,7 +616,7 @@ export class OrgController {
       const link = `${process.env.WEB_URL ?? 'http://localhost:3000'}/accept-invite?token=${token}`;
       await this.mail.send(
         email,
-        'You have been invited to join your company on HR App',
+        'You have been invited to join your company on Seamless Source HR',
         `Accept your invite (valid 7 days): ${link}`,
       );
       // The link is only echoed back outside production, to make local testing easy.

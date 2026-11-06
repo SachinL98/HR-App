@@ -4,8 +4,15 @@ import { PrismaPg } from '@prisma/adapter-pg';
 
 export type Tx = Prisma.TransactionClient;
 
+// Serverless instances multiply, so each keeps only a couple of connections (use the host's pooled URL).
+const POOL_MAX = Number(
+  process.env.DB_POOL_MAX ?? (process.env.VERCEL ? 2 : 10),
+);
+
 function client(url: string) {
-  return new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
+  return new PrismaClient({
+    adapter: new PrismaPg({ connectionString: url, max: POOL_MAX }),
+  });
 }
 
 /**
@@ -26,10 +33,13 @@ export class PrismaService implements OnModuleDestroy {
   );
 
   withTenant<T>(tenantId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
-    return this.app.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
-      return fn(tx);
-    });
+    return this.app.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
+        return fn(tx);
+      },
+      { timeout: 30_000, maxWait: 10_000 },
+    ); // payroll runs and PDF rendering can take longer than the 5s default
   }
 
   async onModuleDestroy() {

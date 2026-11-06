@@ -1,0 +1,87 @@
+name: Deploy to Vercel
+
+# Runs after CI passes on main (or by hand from the Actions tab).
+# Order matters: database first, then the API, then the web app.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  database:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Migrations, roles, passwords, row-level security, and a check that hr_app cannot skip it.
+      - name: Prepare the database
+        env:
+          OWNER_URL: ${{ secrets.OWNER_URL }}
+          HR_APP_PASSWORD: ${{ secrets.HR_APP_PASSWORD }}
+          HR_SYSTEM_PASSWORD: ${{ secrets.HR_SYSTEM_PASSWORD }}
+        run: npm run db:deploy
+
+  api:
+    needs: database
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_API_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Run from the repo root: each Vercel project's "Root Directory" setting picks apps/api or apps/web.
+      - name: Deploy the API
+        run: npx --yes vercel@latest deploy --prod --yes --token "$VERCEL_TOKEN"
+      - name: Wait for the API to answer
+        run: |
+          for i in $(seq 1 12); do
+            if curl -fsS "${{ vars.API_URL }}/health/ready"; then echo; exit 0; fi
+            sleep 10
+          done
+          echo "API did not become ready" >&2; exit 1
+
+  web:
+    needs: api
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_WEB_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Deploy the web app
+        run: npx --yes vercel@latest deploy --prod --yes --token "$VERCEL_TOKEN"
+      - name: Check the sign-in page
+        run: |
+          for i in $(seq 1 12); do
+            if curl -fsS -o /dev/null "${{ vars.WEB_URL }}/login"; then echo "web is up"; exit 0; fi
+            sleep 10
+          done
+          echo "Web app did not answer" >&2; exit 1

@@ -183,5 +183,51 @@ ALTER TABLE "Tenant" FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS tenant_self ON "Tenant";
 CREATE POLICY tenant_self ON "Tenant" USING ("id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
 
+ALTER TABLE "SalaryChange" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "SalaryChange" FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "SalaryChange";
+CREATE POLICY tenant_isolation ON "SalaryChange" USING ("tenantId" = NULLIF(current_setting('app.tenant_id', true), '')::uuid) WITH CHECK ("tenantId" = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+ALTER TABLE "ChecklistTemplate" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "ChecklistTemplate" FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "ChecklistTemplate";
+CREATE POLICY tenant_isolation ON "ChecklistTemplate" USING ("tenantId" = NULLIF(current_setting('app.tenant_id', true), '')::uuid) WITH CHECK ("tenantId" = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+ALTER TABLE "Checklist" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Checklist" FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "Checklist";
+CREATE POLICY tenant_isolation ON "Checklist" USING ("tenantId" = NULLIF(current_setting('app.tenant_id', true), '')::uuid) WITH CHECK ("tenantId" = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+ALTER TABLE "ChecklistTask" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "ChecklistTask" FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "ChecklistTask";
+CREATE POLICY tenant_isolation ON "ChecklistTask" USING ("tenantId" = NULLIF(current_setting('app.tenant_id', true), '')::uuid) WITH CHECK ("tenantId" = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+ALTER TABLE "MemberDocument" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "MemberDocument" FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "MemberDocument";
+CREATE POLICY tenant_isolation ON "MemberDocument" USING ("tenantId" = NULLIF(current_setting('app.tenant_id', true), '')::uuid) WITH CHECK ("tenantId" = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+ALTER TABLE "Delegation" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Delegation" FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "Delegation";
+CREATE POLICY tenant_isolation ON "Delegation" USING ("tenantId" = NULLIF(current_setting('app.tenant_id', true), '')::uuid) WITH CHECK ("tenantId" = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+ALTER TABLE "CalendarFeed" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "CalendarFeed" FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "CalendarFeed";
+CREATE POLICY tenant_isolation ON "CalendarFeed" USING ("tenantId" = NULLIF(current_setting('app.tenant_id', true), '')::uuid) WITH CHECK ("tenantId" = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+-- Salary history is append-only: pay records cannot be rewritten.
+REVOKE UPDATE, DELETE ON "SalaryChange" FROM hr_app, hr_system;
+
 -- Audit log is append-only for the app role.
 REVOKE UPDATE, DELETE ON "AuditLog" FROM hr_app;
+
+-- hr_system (login and invite lookups) must not be able to rewrite history either.
+REVOKE UPDATE, DELETE ON "AuditLog" FROM hr_system;
+
+ALTER TABLE "FileBlob" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "FileBlob" FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "FileBlob";
+CREATE POLICY tenant_isolation ON "FileBlob" USING ("tenantId" = NULLIF(current_setting('app.tenant_id', true), '')::uuid) WITH CHECK ("tenantId" = NULLIF(current_setting('app.tenant_id', true), '')::uuid);

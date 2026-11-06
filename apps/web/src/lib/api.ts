@@ -1,6 +1,7 @@
 import "server-only";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { clearSession, getToken } from "./session";
+import { getToken } from "./session";
 
 const BASE = process.env.API_URL ?? "http://localhost:4000";
 
@@ -15,10 +16,17 @@ export async function api<T = unknown>(
   init: { method?: string; body?: unknown; auth?: boolean } = {},
 ): Promise<T> {
   const token = init.auth === false ? undefined : await getToken();
+  // Pass the visitor's address on, so the API rate-limits each person, not the web server as a whole.
+  let ip: string | undefined;
+  try {
+    const h = await headers();
+    ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || undefined;
+  } catch { /* not inside a request (e.g. at build time) */ }
   const res = await fetch(`${BASE}${path}`, {
     method: init.method ?? (init.body ? "POST" : "GET"),
     headers: {
       "content-type": "application/json",
+      ...(ip ? { "x-forwarded-for": ip } : {}),
       ...(token ? { authorization: `Bearer ${token}` } : {}),
     },
     body: init.body ? JSON.stringify(init.body) : undefined,
@@ -26,8 +34,7 @@ export async function api<T = unknown>(
   });
   if (res.status === 401 && init.auth !== false) {
     // Expired or revoked session (e.g. the member was suspended).
-    await clearSession().catch(() => {});
-    redirect("/login");
+    redirect("/api/session/expired"); // clears the dead cookie, then lands on the login page
   }
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
@@ -47,10 +54,19 @@ export interface Org {
   themePrimary: string; themeAccent: string; themeMode: "light" | "dark" | "system"; themeRadius: "sm" | "md" | "lg";
   subscription: { tier: string; status: string; seats: number; trialEndsAt: string | null } | null;
   trialDaysLeft: number | null;
+  plan: PlanInfo | null;
+}
+export type PlanState = "trial" | "trial_grace" | "trial_ended" | "active" | "past_due" | "canceled";
+export interface PlanInfo { tier: string; chosen: string; state: PlanState; graceEndsAt: string | null; seatLimit: number; seatsUsed: number }
+export interface BillingOverview {
+  plan: PlanInfo & { invitesPending: number; overLimit: boolean };
+  subscription: { tier: string; status: string; seats: number; interval: string; trialEndsAt: string | null; currentPeriodEnd: string | null };
+  features: { tier: string; seats: number | null; items: string[] }[];
 }
 export interface Member {
   id: string; firstName: string; lastName: string; workEmail: string; status: string; isOwner: boolean;
   departmentId: string | null; jobRoleId: string | null; managerId: string | null;
+  employeeNo?: string | null; startDate?: string | null;
 }
 export interface Department { id: string; name: string; parentId: string | null }
 export interface JobRole { id: string; name: string; description: string | null; defaultPermissions: string[] }
@@ -60,15 +76,20 @@ export interface PendingInvite { id: string; email: string; expiresAt: string }
 export interface Balance {
   key: string; label: string; subject: "LEAVE" | "WFH"; leaveTypeId: string | null; period: string;
   periodStart: string; periodEnd: string; entitled: number | null; used: number; pending: number; remaining: number | null;
+  yearly: number | null; carriedOver: number; carriedLeft: number; carryExpires: string | null; accrual: "upfront" | "monthly";
 }
-export interface LeaveType { id: string; name: string; code: string; allowHalfDay: boolean; active: boolean }
+export interface LeaveType { id: string; name: string; code: string; allowHalfDay: boolean; active: boolean; carryOverMax?: string | number; carryOverExpiryMonths?: number | null; accrual?: "upfront" | "monthly" }
 export interface RequestAction { id: string; decision: string; comment: string | null; createdAt: string; actor?: { firstName: string; lastName: string } }
 export interface LeaveRequest {
   id: string; type: "LEAVE" | "WFH"; status: "PENDING" | "APPROVED" | "REJECTED" | "CANCELED" | "CHANGES_REQUESTED" | "DRAFT";
   leaveTypeId: string | null; startDate: string; endDate: string; startPart: string; endPart: string; days: string | null;
   reason: string | null; createdAt: string; currentStep: number; actions: RequestAction[];
   requester?: { id: string; firstName: string; lastName: string };
+  teamOff?: { total: number; off: number; names: string[] } | null;
 }
+export interface DelegationItem { id: string; from: { id: string; name: string }; to: { id: string; name: string }; startsOn: string; endsOn: string; active: boolean }
+export interface Delegations { given: DelegationItem[]; received: DelegationItem[] }
+export interface WorkflowSteps { type: "LEAVE" | "WFH"; steps: { kind: "manager" | "dept_head" | "member" | "permission"; memberId?: string }[]; custom: boolean }
 export type DayType = "IN_OFFICE" | "WFH" | "LEAVE" | "HOLIDAY" | "OUT_OF_OFFICE" | "NON_WORKING";
 export interface CalendarData {
   workWeek: number[]; timeZone: string;
@@ -101,6 +122,13 @@ export interface PayrollRun {
 export interface PayrollRunDetail extends Omit<PayrollRun, "_count"> {
   payslips: { id: string; member: { id: string; firstName: string; lastName: string }; gross: number; net: number; unpaidDays: string; lines: PayLine[] }[];
   totals: { gross: number; net: number; employerCost: number };
+  people: { preparedBy: string | null; submittedBy: string | null; approvedBy: string | null; finalizedBy: string | null };
+  dualControl: boolean; youMustWait: boolean;
+  submittedAt: string | null; approvedAt: string | null; finalizedAt: string | null; createdAt: string;
+}
+export interface SalaryHistory {
+  member: { id: string; firstName: string; lastName: string };
+  changes: { id: string; at: string; by: string; reason: string | null; effectiveFrom: string; payGroup: { name: string; currency: string } | null; basic: number; components: { code: string; label: string; value: number }[] }[];
 }
 export interface SalaryRow {
   memberId: string; member: { id: string; firstName: string; lastName: string }; payGroup: { id: string; name: string; currency: string };
@@ -113,7 +141,19 @@ export interface PayslipDetail {
   status: string; unpaidDays: string; gross: number; net: number; lines: PayLine[]; ruleVersion: string | null;
 }
 
-export interface DocTemplate { id: string; name: string; kind: string; html: string | null; fields: string[]; requestable: boolean; version: number }
+export interface AccountOverview { email: string; emailVerified: boolean; mfaEnabled: boolean; recoveryCodesLeft: number; mailEnabled: boolean }
+export interface SessionItem { id: string; createdAt: string; ip: string | null; userAgent: string | null; current: boolean }
+export interface ChecklistItem { title: string; who: "employee" | "manager" | "hr"; dueDays?: number }
+export interface ChecklistTemplate { id: string; name: string; kind: "onboarding" | "offboarding"; items: ChecklistItem[] }
+export interface MemberChecklist {
+  id: string; name: string; kind: string; createdAt: string;
+  tasks: { id: string; title: string; who: string; assignee: string | null; dueDate: string | null; doneAt: string | null; canTick: boolean }[];
+}
+export interface MyTask { id: string; title: string; dueDate: string | null; checklist: string; member: { id: string; firstName: string; lastName: string } }
+export interface MemberDoc { id: string; title: string; kind: string; visibleToMember: boolean; createdAt: string }
+export interface AuditItem { id: string; action: string; targetType: string | null; targetId: string | null; actor: string; createdAt: string }
+export interface DocLayout { top?: number; bottom?: number; left?: number; right?: number; size?: number; color?: string; justify?: boolean; footer?: number }
+export interface DocTemplate { id: string; name: string; kind: string; html: string | null; fields: string[]; requestable: boolean; version: number; fileId: string | null; layout: DocLayout | null }
 export interface Seal { id: string; kind: "stamp" | "signature"; label: string; signatoryId: string | null; token: string }
 export interface IssuedDoc {
   id: string; name: string; kind: string; subject: { id: string; firstName: string; lastName: string };
@@ -124,5 +164,5 @@ export interface DocRequest {
   details: { templateId: string; templateName: string; documentId?: string };
   requester?: { id: string; firstName: string; lastName: string };
 }
-export interface DocPreview { title: string; text: string; needsStamp: boolean; needsSignatures: string[] }
+export interface DocPreview { title: string; text: string; missing: string[]; needsStamp: boolean; needsSignatures: string[] }
 export interface VerifyResult { valid: boolean; found: boolean; revoked?: boolean; document?: string; company?: string; issuedAt?: string }

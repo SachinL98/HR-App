@@ -9,6 +9,7 @@ import {
   NotFoundException,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Put,
   Query,
@@ -19,6 +20,7 @@ import type { Ctx } from '../common/ctx';
 import { can } from '../org/permissions';
 import {
   HolidaysDto,
+  LeavePolicyDto,
   LeaveTypeDto,
   OutOfOfficeDto,
   QuotaDto,
@@ -37,6 +39,40 @@ export class SetupController {
     return this.prisma.withTenant(c.tenantId, (tx) =>
       tx.leaveType.findMany({ orderBy: { name: 'asc' } }),
     );
+  }
+
+  /** Set carry-over and accrual for a leave type. It applies to every balance from the next time it is looked at. */
+  @Patch('leave-types/:id/policy')
+  @RequirePermission('quota.manage')
+  setPolicy(
+    @CurrentCtx() c: Ctx,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: LeavePolicyDto,
+  ) {
+    return this.prisma.withTenant(c.tenantId, async (tx) => {
+      const lt = await tx.leaveType.findFirst({ where: { id } });
+      if (!lt) throw new NotFoundException('Leave type not found');
+      const updated = await tx.leaveType.update({
+        where: { id },
+        data: {
+          carryOverMax: dto.carryOverMax,
+          // Carry-over off means there is nothing to expire.
+          carryOverExpiryMonths:
+            dto.carryOverMax === 0 ? null : dto.carryOverExpiryMonths,
+          accrual: dto.accrual,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId: c.tenantId,
+          actorId: c.memberId,
+          action: 'leavetype.policy',
+          targetId: id,
+          meta: { ...dto },
+        },
+      });
+      return updated;
+    });
   }
 
   @Post('leave-types')
@@ -159,6 +195,8 @@ export class SetupController {
   @Get('holidays')
   holidays(@CurrentCtx() c: Ctx, @Query('year') year?: string) {
     const y = Number(year) || new Date().getUTCFullYear();
+    if (!Number.isInteger(y) || y < 2000 || y > 2100)
+      throw new BadRequestException('Year must be between 2000 and 2100');
     return this.prisma.withTenant(c.tenantId, (tx) =>
       tx.holiday.findMany({
         where: {

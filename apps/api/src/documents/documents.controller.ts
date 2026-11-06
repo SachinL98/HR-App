@@ -94,6 +94,22 @@ export class DocumentsController {
     return this.svc.preview(c, dto);
   }
 
+  @Post('documents/preview-pdf')
+  @RequirePermission('document.issue')
+  async previewPdf(
+    @CurrentCtx() c: Ctx,
+    @Body() dto: PreviewDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const bytes = await this.svc.previewPdf(c, dto);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': 'inline; filename="preview.pdf"',
+      'Cache-Control': 'private, no-store',
+    });
+    return new StreamableFile(bytes);
+  }
+
   @Post('documents')
   @RequirePermission('document.issue')
   issue(@CurrentCtx() c: Ctx, @Body() dto: IssueDto) {
@@ -101,7 +117,10 @@ export class DocumentsController {
   }
 
   @Get('documents')
-  list(@CurrentCtx() c: Ctx, @Query('memberId') memberId?: string) {
+  list(
+    @CurrentCtx() c: Ctx,
+    @Query('memberId', new ParseUUIDPipe({ optional: true })) memberId?: string,
+  ) {
     return this.svc.list(c, memberId);
   }
 

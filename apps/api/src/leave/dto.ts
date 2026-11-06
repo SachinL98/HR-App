@@ -2,7 +2,9 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsDateString,
+  IsISO8601,
   IsIn,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
@@ -16,12 +18,14 @@ import {
 
 const PART = ['FULL', 'AM', 'PM'] as const;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
+/** A real calendar date (rejects 2024-99-99), written YYYY-MM-DD. */
+const realDay = () => IsISO8601({ strict: true, strictSeparator: true });
 
 export class CreateRequestDto {
   @IsIn(['LEAVE', 'WFH']) type!: 'LEAVE' | 'WFH';
   @IsOptional() @IsUUID() leaveTypeId?: string;
-  @Matches(DAY) startDate!: string;
-  @Matches(DAY) endDate!: string;
+  @Matches(DAY) @realDay() startDate!: string;
+  @Matches(DAY) @realDay() endDate!: string;
   @IsOptional() @IsIn(PART) startPart?: 'FULL' | 'AM' | 'PM';
   @IsOptional() @IsIn(PART) endPart?: 'FULL' | 'AM' | 'PM';
   @IsOptional() @IsString() @Length(0, 500) reason?: string;
@@ -81,4 +85,17 @@ export class RangeQuery {
   @IsDateString() to!: string;
   @IsOptional() @IsUUID() departmentId?: string;
   @IsOptional() @IsUUID() memberId?: string;
+}
+
+/** Carry-over and accrual for one leave type. Leave carryOverExpiryMonths out (or null) for "never expires". */
+export class LeavePolicyDto {
+  /** Most unused days that roll into the next year. 0 turns carry-over off. */
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 1 })
+  @Min(0)
+  @Max(60)
+  carryOverMax?: number;
+  @IsOptional() @IsInt() @Min(1) @Max(12) carryOverExpiryMonths?: number | null;
+  /** upfront: the whole year is available at once. monthly: it builds up month by month. */
+  @IsOptional() @IsIn(['upfront', 'monthly']) accrual?: 'upfront' | 'monthly';
 }

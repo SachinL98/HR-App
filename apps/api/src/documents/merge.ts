@@ -9,6 +9,7 @@ export const FIELDS = {
   'member.first_name': 'First name',
   'member.last_name': 'Last name',
   'member.employee_no': 'Employee number',
+  'member.national_id': 'National ID / NIC (needs member management access)',
   'member.work_email': 'Work email',
   'member.job_title': 'Job title',
   'member.department': 'Department',
@@ -21,8 +22,15 @@ export const FIELDS = {
   'salary.basic_monthly': 'Monthly basic salary (needs payroll access)',
   'salary.currency': 'Salary currency (needs payroll access)',
 } as const;
+/** Fields that may legitimately be blank (a current employee has no end date). */
+export const OPTIONAL_FIELDS = new Set([
+  'member.end_date',
+  'member.employee_no',
+]);
 export type FieldName = keyof typeof FIELDS;
 
+export const STAMP_MARK = '\u0001stamp\u0002';
+export const SIG_MARK = '\u0001sig:';
 const TOKEN = /\{\{\s*([a-z0-9_.]+)\s*\}\}/gi;
 export const slug = (s: string) =>
   s
@@ -52,11 +60,18 @@ export function parse(body: string): Parsed {
 }
 
 /** Fills text fields and removes the image tokens (they are drawn separately). */
-export function fill(body: string, values: Record<string, string>) {
+export function fill(
+  body: string,
+  values: Record<string, string>,
+  /** Keep image tokens as markers so the PDF can draw them where they were typed. */
+  keepImages = false,
+) {
   return body
     .replace(TOKEN, (_all, raw: string) => {
       const t = raw.toLowerCase();
-      if (t === 'stamp' || t.startsWith('signature.')) return '';
+      if (t === 'stamp') return keepImages ? STAMP_MARK : '';
+      if (t.startsWith('signature.'))
+        return keepImages ? `${SIG_MARK}${t.slice(10)}\u0002` : '';
       return values[t] ?? '';
     })
     .replace(/[ \t]+\n/g, '\n')

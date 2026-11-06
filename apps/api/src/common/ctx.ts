@@ -10,6 +10,8 @@ export interface Ctx {
   userId: string;
   memberId: string;
   tenantId: string;
+  /** The sign-in this request belongs to, so it can be ended. */
+  sessionId: string;
   subject: Subject;
 }
 

@@ -8,26 +8,37 @@
   --accent: #14b8a6;
   --accent-fg: #111827;
   --ui-radius: 10px;
-  --bg: #f6f7fb;
+  --bg: #f4f5f8;
   --surface: #ffffff;
-  --line: #e5e7ef;
-  --ink: #111827;
-  --muted: #5b6275;
+  --surface-2: #f8f9fb;
+  --line: #e4e7ee;
+  --ink: #0f172a;
+  --muted: #5f6b7e;
+  --shadow: 0 1px 2px rgb(16 24 40 / 0.05), 0 1px 3px rgb(16 24 40 / 0.04);
+  --shadow-pop: 0 12px 32px rgb(16 24 40 / 0.14);
 }
 [data-mode="dark"] {
-  --bg: #0e1118;
-  --surface: #161a24;
-  --line: #262c3b;
+  --bg: #0b0e14;
+  --surface: #141822;
+  --surface-2: #1a1f2b;
+  --line: #262d3c;
   --ink: #eef0f6;
-  --muted: #9aa2b5;
+  --muted: #9aa3b6;
+  --link: color-mix(in srgb, var(--primary) 45%, #ffffff);
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-pop: 0 12px 32px rgb(0 0 0 / 0.5);
 }
 @media (prefers-color-scheme: dark) {
   [data-mode="system"] {
-    --bg: #0e1118;
-    --surface: #161a24;
-    --line: #262c3b;
+    --bg: #0b0e14;
+    --surface: #141822;
+    --surface-2: #1a1f2b;
+    --line: #262d3c;
     --ink: #eef0f6;
-    --muted: #9aa2b5;
+    --muted: #9aa3b6;
+    --link: color-mix(in srgb, var(--primary) 45%, #ffffff);
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-pop: 0 12px 32px rgb(0 0 0 / 0.5);
   }
 }
 
@@ -38,6 +49,7 @@
   --color-accent-fg: var(--accent-fg);
   --color-bg: var(--bg);
   --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
   --color-line: var(--line);
   --color-ink: var(--ink);
   --color-muted: var(--muted);
@@ -45,12 +57,114 @@
   --font-sans: var(--font-geist-sans);
 }
 
+html,
+body {
+  min-height: 100%;
+}
 body {
   background: var(--bg);
   color: var(--ink);
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-family: var(--font-geist-sans), var(--font-sinhala), var(--font-tamil), system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 :focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
+}
+::selection {
+  background: color-mix(in srgb, var(--primary) 25%, transparent);
+}
+
+@layer components {
+  /* One look for every text box, select and text area. */
+  .input {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: var(--ui-radius);
+    background: var(--surface);
+    color: var(--ink);
+    padding: 0.5rem 0.75rem;
+    min-height: 2.5rem;
+    font-size: 0.875rem;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .input::placeholder {
+    color: var(--muted);
+    opacity: 0.8;
+  }
+  .input:hover {
+    border-color: color-mix(in srgb, var(--ink) 30%, var(--line));
+  }
+  .input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 20%, transparent);
+  }
+  select.input[multiple] {
+    padding: 0.25rem;
+  }
+  input[type="checkbox"],
+  input[type="radio"] {
+    accent-color: var(--primary);
+    width: 1rem;
+    height: 1rem;
+  }
+
+  /* Data tables: calm header, row hover, tidy cells. */
+  .tbl {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+    font-size: 0.875rem;
+  }
+  .tbl thead th {
+    position: sticky;
+    top: 0;
+    background: var(--surface-2);
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    padding: 0.625rem 1rem;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  .tbl tbody td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--line);
+    vertical-align: middle;
+  }
+  .tbl tbody tr:last-child td {
+    border-bottom: 0;
+  }
+  .tbl tbody tr:hover td {
+    background: color-mix(in srgb, var(--primary) 4%, transparent);
+  }
+
+  /* A simple divided list used for rows of items. */
+  .rows > * {
+    border-top: 1px solid var(--line);
+  }
+  .rows > *:first-child {
+    border-top: 0;
+  }
+
+  .link {
+    color: var(--link, var(--primary));
+    font-weight: 500;
+  }
+  .link:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
 }

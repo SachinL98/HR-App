@@ -42,6 +42,8 @@ jobs:
         run: npm run db:generate
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/hr
+      - name: Dependency audit (production packages, high and above)
+        run: npm audit --omit=dev --audit-level=critical
       - run: npm run lint
       - run: npm run build
       - run: npm test

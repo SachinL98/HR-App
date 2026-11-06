@@ -2,17 +2,19 @@ import Link from "next/link";
 import { ActionForm } from "@/components/action-form";
 import { Field, Select } from "@/components/ui";
 import { register } from "../../actions";
+import { getI18n } from "@/lib/i18n/server";
 
-export const metadata = { title: "Create your company · HR App" };
+export const metadata = { title: "Create your company · Seamless Source HR" };
 
-export default function RegisterPage() {
+export default async function RegisterPage() {
+  const { t } = await getI18n();
   return (
     <>
-      <h1 className="mb-1 text-xl font-semibold">Create your company account</h1>
-      <p className="mb-5 text-sm text-muted">You become the owner. Start with a 14-day Gold trial.</p>
-      <ActionForm action={register} submit="Create account">
-        <Field label="Company name" name="orgName" required minLength={2} />
-        <Select label="Country" name="country" defaultValue="GB">
+      <h1 className="text-2xl font-semibold tracking-tight">{t("auth.createCompany")}</h1>
+      <p className="mb-6 mt-1 text-sm text-muted">{t("auth.createCompanyText")}</p>
+      <ActionForm action={register} submit={t("auth.createAccount")} block>
+        <Field label={t("auth.companyName")} name="orgName" required minLength={2} />
+        <Select label={t("auth.country")} name="country" defaultValue="GB">
           <option value="GB">United Kingdom</option>
           <option value="LK">Sri Lanka</option>
           <option value="US">United States</option>
@@ -22,14 +24,14 @@ export default function RegisterPage() {
           <option value="SG">Singapore</option>
         </Select>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="First name" name="firstName" autoComplete="given-name" required />
-          <Field label="Last name" name="lastName" autoComplete="family-name" required />
+          <Field label={t("auth.firstName")} name="firstName" autoComplete="given-name" required />
+          <Field label={t("auth.lastName")} name="lastName" autoComplete="family-name" required />
         </div>
-        <Field label="Work email" name="email" type="email" autoComplete="email" required />
-        <Field label="Password" name="password" type="password" autoComplete="new-password" minLength={10} required hint="At least 10 characters." />
+        <Field label={t("auth.workEmail")} name="email" type="email" autoComplete="email" required />
+        <Field label={t("auth.password")} name="password" type="password" autoComplete="new-password" minLength={10} required hint={t("auth.passwordHint")} />
       </ActionForm>
-      <p className="mt-5 text-center text-sm text-muted">
-        Already have an account? <Link className="font-medium text-primary underline" href="/login">Sign in</Link>
+      <p className="mt-6 text-center text-sm text-muted">
+        {t("auth.haveAccount")} <Link className="link" href="/login">{t("auth.signIn")}</Link>
       </p>
     </>
   );
