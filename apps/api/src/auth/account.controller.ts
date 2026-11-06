@@ -12,6 +12,7 @@ import { Throttle } from '@nestjs/throttler';
 import { CurrentCtx } from '../common/ctx';
 import type { Ctx } from '../common/ctx';
 import { AccountService } from './account.service';
+import { AuthService } from './auth.service';
 import {
   ChangePasswordDto,
   LocaleDto,
@@ -22,7 +23,15 @@ import {
 /** Signed-in people managing their own account. */
 @Controller('account')
 export class AccountController {
-  constructor(private svc: AccountService) {}
+  constructor(
+    private svc: AccountService,
+    private auth: AuthService,
+  ) {}
+
+  /** Signed token that lets this person step into the Developer Dashboard without signing in again. */
+  @Post('dashboard-token') dashboardToken(@CurrentCtx() c: Ctx) {
+    return this.auth.dashboardToken(c.userId);
+  }
 
   @Get() overview(@CurrentCtx() c: Ctx) {
     return this.svc.overview(c);

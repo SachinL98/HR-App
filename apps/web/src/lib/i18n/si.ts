@@ -20,6 +20,7 @@ export const si: Partial<Record<Key, string>> = {
   "common.error": "යමක් වැරදී ඇත. කරුණාකර නැවත උත්සාහ කරන්න.",
 
   "nav.home": "මුල් පිටුව",
+  "nav.devDashboard": "සංවර්ධක උපකරණ පුවරුව",
   "nav.timeOff": "නිවාඩු",
   "nav.company": "සමාගම",
   "nav.pay": "පඩි",

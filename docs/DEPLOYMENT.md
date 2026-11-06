@@ -437,3 +437,27 @@ The file `.github/workflows/deploy.yml` deploys on every push to `main` once the
 - Neon: [Roles](https://neon.com/docs/manage/roles/)
 
 Dashboard wording and menus change; where this guide names a button, look for the closest match. Values that depend on your account (hosts, regions, DNS records) always come from your own dashboards.
+
+## 14. Connecting the Developer Dashboard
+
+The HR app is the single source of truth for leave, work from home and public holidays. The Developer Dashboard reads them for sprint capacity and finish forecasts.
+
+1. On the **hr-api** Vercel project add `INTEGRATION_TOKEN` (a long random string, for example `openssl rand -hex 32`) and `INTEGRATION_TENANT` (your company's slug), then redeploy.
+2. On the dashboard add `HR_API_URL` (the hr-api URL, no trailing slash) and `HR_API_TOKEN` (the same token), then redeploy.
+3. People are matched by work email, so a developer needs the same email in both apps.
+
+Without the variables nothing changes: the endpoint returns 404 and the dashboard uses its own leave tables. If the HR app is down the dashboard logs it and falls back to its local data.
+
+### Single sign-on between the apps
+
+People sign in once, normally on the Developer Dashboard, and switch to the HR app from the account menu (and back from the HR sidebar) without a second login.
+
+1. Generate one secret: `openssl rand -hex 32`. Put the **same** value in `SSO_SECRET` on the `hr-api` project and on the dashboard.
+2. On the HR **web** project set `DASHBOARD_URL` to the dashboard's URL. On the dashboard set `HR_WEB_URL` to the HR web URL (already needed above).
+3. Redeploy all three.
+
+How it works: the app you are signed in to creates a signed token that is valid for one minute and only for the other app; the other app checks the signature and starts its own session. Nothing is created automatically, so the person must already have an account (same email) in both apps. HR accounts with two-factor sign-in on are sent to the normal HR login instead. Anyone who can approve dashboard sign-ups can therefore let a person into the HR account with that email, so only approve emails you recognise.
+
+### Jira people
+
+A person imported from Jira is linked to their sign-up automatically when the names clearly match (same words in any order, one name inside the other such as "Sachin Lakshan" and "Sachin Lakshan Perera", or a one-letter typo in a long name) and only one person fits. Ambiguous matches are left alone: use Admin → Users → Merge.

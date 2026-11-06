@@ -67,6 +67,13 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     </div>
   );
   const account = (
+    <div className="space-y-2">
+      {process.env.DASHBOARD_URL && (
+        // A plain link on purpose: the route mints a one-minute sign-in token, which a prefetch must not trigger.
+        <a href="/api/go/dashboard" className="flex items-center justify-between rounded-ui border border-line px-3 py-2 text-sm font-medium hover:bg-surface-2">
+          {t("nav.devDashboard")} <span aria-hidden>↗</span>
+        </a>
+      )}
     <div className="flex items-center gap-3">
       <Link href="/account" className="flex min-w-0 flex-1 items-center gap-3 rounded-ui p-1 hover:bg-surface-2" title={t("nav.account")}>
         <Avatar name={fullName} size={36} />
@@ -76,6 +83,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         </div>
       </Link>
       <form action={logout}><Button variant="subtle" size="sm" type="submit">{t("common.signOut")}</Button></form>
+    </div>
     </div>
   );
 

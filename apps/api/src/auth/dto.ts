@@ -71,3 +71,7 @@ export class MfaDisableDto {
 export class LocaleDto {
   @IsIn(['en', 'si', 'ta']) locale!: 'en' | 'si' | 'ta';
 }
+
+export class SsoDto {
+  @IsString() @MaxLength(1000) token!: string;
+}

@@ -10,6 +10,7 @@ import {
   MfaLoginDto,
   RegisterDto,
   ResetDto,
+  SsoDto,
   TokenDto,
 } from './dto';
 
@@ -29,6 +30,9 @@ export class AuthController {
   }
   @Post('login') login(@Body() dto: LoginDto, @Req() r: Request) {
     return this.auth.login(dto, meta(r));
+  }
+  @Post('sso') sso(@Body() dto: SsoDto, @Req() r: Request) {
+    return this.auth.ssoLogin(dto.token, meta(r));
   }
   @Post('mfa') mfa(@Body() dto: MfaLoginDto, @Req() r: Request) {
     return this.auth.loginMfa(dto.challenge, dto.code, meta(r));

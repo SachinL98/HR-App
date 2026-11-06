@@ -20,6 +20,7 @@ export const ta: Partial<Record<Key, string>> = {
   "common.error": "ஏதோ தவறு நடந்தது. மீண்டும் முயலவும்.",
 
   "nav.home": "முகப்பு",
+  "nav.devDashboard": "டெவலப்பர் டாஷ்போர்டு",
   "nav.timeOff": "விடுப்பு",
   "nav.company": "நிறுவனம்",
   "nav.pay": "ஊதியம்",

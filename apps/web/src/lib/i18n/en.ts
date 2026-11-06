@@ -23,6 +23,7 @@ export const en = {
 
   // Navigation
   "nav.home": "Home",
+  "nav.devDashboard": "Developer Dashboard",
   "nav.timeOff": "Time off",
   "nav.company": "Company",
   "nav.pay": "Pay",

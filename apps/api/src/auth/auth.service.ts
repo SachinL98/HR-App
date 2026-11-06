@@ -5,6 +5,7 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -19,6 +20,7 @@ import { MailService, emailBody } from './mail.service';
 import { LoginThrottle } from './login-throttle';
 import { checkTotp } from '../common/totp';
 import { decryptBytes } from '../common/field-crypto';
+import { signSso, ssoSecret, verifySso } from '../common/sso';
 
 /** Where a sign-in came from, kept with the session so people can recognise and end them. */
 export interface Meta {
@@ -279,6 +281,50 @@ export class AuthService {
       accessToken: await this.token(userId, chosen.id, chosen.tenantId, meta),
       tenant: { id: chosen.tenantId, slug: chosen.tenant.slug },
     };
+  }
+
+  /**
+   * Single sign-on from the Developer Dashboard. The dashboard vouches for the person with a signed, one-minute token;
+   * we only start a session for someone who already exists here, never create one, and never skip two-factor.
+   */
+  async ssoLogin(token: string, meta: Meta = {}) {
+    const secret = ssoSecret();
+    if (!secret) throw new NotFoundException();
+    const claims = verifySso(token, 'hr', secret);
+    if (!claims)
+      throw new UnauthorizedException('This sign-in link has expired');
+    const user = await this.prisma.system.user.findUnique({
+      where: { email: claims.email },
+      include: {
+        memberships: { where: { status: 'ACTIVE' }, include: { tenant: true } },
+      },
+    });
+    const slug = process.env.INTEGRATION_TENANT;
+    const chosen = slug
+      ? user?.memberships.find((m) => m.tenant.slug === slug)
+      : user?.memberships.length === 1
+        ? user.memberships[0]
+        : undefined;
+    if (!user || !chosen)
+      throw new UnauthorizedException('No matching account in the HR app');
+    if (this.mail.enabled && !user.emailVerified)
+      throw new ForbiddenException('Please confirm your email first.');
+    if (user.mfaEnabled)
+      throw new ForbiddenException(
+        'Two-factor sign-in is on for this account. Sign in to the HR app directly.',
+      );
+    return this.finishLogin(user.id, chosen, meta);
+  }
+
+  /** A token that lets the signed-in person step into the Developer Dashboard. */
+  async dashboardToken(userId: string) {
+    const secret = ssoSecret();
+    if (!secret) throw new NotFoundException();
+    const user = await this.prisma.system.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { email: true },
+    });
+    return { token: signSso(user.email, 'dash', secret) };
   }
 
   /** Second step of sign-in: an authenticator code, or one of the one-time recovery codes. */
