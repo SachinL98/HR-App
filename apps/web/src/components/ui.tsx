@@ -139,8 +139,12 @@ export function Split({ children, side = "24rem" }: { children: ReactNode; side?
 }
 
 /** Initials in a coloured circle. */
-export function Avatar({ name, size = 32 }: { name: string; size?: number }) {
+export function Avatar({ name, size = 32, member }: { name: string; size?: number; member?: { id: string; photoFileId?: string | null } }) {
   const initials = name.split(" ").filter(Boolean).slice(0, 2).map((s) => s[0]?.toUpperCase()).join("");
+  if (member?.photoFileId) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img alt="" src={`/api/photo/${member.id}?v=${member.photoFileId}`} width={size} height={size} style={{ width: size, height: size }} className="inline-block shrink-0 rounded-full object-cover" />;
+  }
   return (
     <span aria-hidden style={{ width: size, height: size, fontSize: size * 0.38 }}
       className="inline-flex shrink-0 items-center justify-center rounded-full bg-primary/10 font-semibold text-primary">{initials}</span>

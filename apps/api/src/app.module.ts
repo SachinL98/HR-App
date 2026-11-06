@@ -31,6 +31,8 @@ import { LeaveService } from './leave/leave.service';
 import { CronController } from './cron/cron.controller';
 import { AvailabilityController } from './integrations/availability.controller';
 import { IdentityController } from './integrations/identity.controller';
+import { ProfileController } from './people/profile.controller';
+import { ProfileService } from './people/profile.service';
 import { ReminderJob } from './leave/reminders';
 import { ApprovalsExtraController } from './leave/extras.controller';
 
@@ -79,6 +81,7 @@ if (process.env.NODE_ENV === 'production') {
     CronController,
     AvailabilityController,
     IdentityController,
+    ProfileController,
     AppController,
     AuthController,
     OrgController,
@@ -107,6 +110,7 @@ if (process.env.NODE_ENV === 'production') {
     PayrollService,
     DocumentsService,
     FileStore,
+    ProfileService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
   ],

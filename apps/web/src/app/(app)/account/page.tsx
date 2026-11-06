@@ -1,4 +1,5 @@
-import { api, type AccountOverview, type Me, type SessionItem } from "@/lib/api";
+import { api, type AccountOverview, type Me, type Profile, type SessionItem } from "@/lib/api";
+import { ProfileCard } from "@/components/profile-card";
 import { ActionForm } from "@/components/action-form";
 import { MfaSetup } from "@/components/mfa-setup";
 import { Badge, Button, Card, Field, PageHeader } from "@/components/ui";
@@ -18,13 +19,14 @@ function device(ua: string | null) {
 
 export default async function Account() {
   const { t } = await getI18n();
-  const [me, acct, sessions] = await Promise.all([api<Me>("/me"), api<AccountOverview>("/account"), api<SessionItem[]>("/account/sessions")]);
+  const [me, acct, sessions, profile] = await Promise.all([api<Me>("/me"), api<AccountOverview>("/account"), api<SessionItem[]>("/account/sessions"), api<Profile>("/account/profile")]);
   return (
     <>
       <PageHeader title={t("account.title")} sub={`${me.firstName} ${me.lastName} · ${acct.email}`}>
         <Badge tone={acct.emailVerified ? "good" : "warn"}>{acct.emailVerified ? "Email confirmed" : "Email not confirmed"}</Badge>
       </PageHeader>
       <div className="grid items-start gap-6 xl:grid-cols-2">
+        <Card title={t("profile.cardTitle")} sub={t("profile.sub")} className="xl:col-span-2"><ProfileCard me={me} p={profile} /></Card>
         <Card title={t("account.languageTitle")} sub={t("account.languageSub")} className="xl:col-span-2"><LanguageSwitch /></Card>
         <Card title="Change password" sub="You stay signed in here. Other devices are signed out.">
           <ActionForm action={changePassword} submit="Change password" block>

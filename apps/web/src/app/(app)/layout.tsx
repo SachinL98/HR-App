@@ -71,7 +71,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const pref = jar.get("hr_mode")?.value;
   const mode = (pref === "light" || pref === "dark" || pref === "system" ? pref : org.themeMode) as "light" | "dark" | "system";
   const userMenu = (
-    <UserMenu name={fullName} role={me.isOwner ? "Owner" : (me.jobRole?.name ?? "Member")} mode={mode} dashboard={!!process.env.DASHBOARD_URL} signOut={logout} />
+    <UserMenu member={me} name={fullName} role={me.isOwner ? "Owner" : (me.jobRole?.name ?? "Member")} mode={mode} dashboard={!!process.env.DASHBOARD_URL} signOut={logout} />
   );
   const action = (
     <Link href="/leave" className="hidden h-10 items-center rounded-ui bg-primary px-4 text-sm font-medium text-primary-fg shadow-sm hover:opacity-90 md:inline-flex">

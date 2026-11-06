@@ -16,7 +16,7 @@ const ico = (d: string) => (
 );
 
 /** Avatar button in the top bar: the person, theme, a switch to the Developer Dashboard, account and sign out. */
-export function UserMenu({ name, role, mode, dashboard, signOut }: { name: string; role: string; mode: Mode; dashboard: boolean; signOut: () => Promise<void> }) {
+export function UserMenu({ name, role, mode, dashboard, signOut, member }: { member: { id: string; photoFileId?: string | null }; name: string; role: string; mode: Mode; dashboard: boolean; signOut: () => Promise<void> }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [current, setCurrent] = useState<Mode>(mode);
@@ -33,12 +33,12 @@ export function UserMenu({ name, role, mode, dashboard, signOut }: { name: strin
   return (
     <div ref={ref} className="relative">
       <button onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open} aria-label={t("menu.open")} className="flex rounded-full p-0.5 hover:bg-surface-2">
-        <Avatar name={name} size={36} />
+        <Avatar name={name} size={36} member={member} />
       </button>
       {open && (
         <div role="menu" className="absolute right-0 top-12 z-50 w-72 rounded-2xl border border-line bg-surface p-2 shadow-[var(--shadow-pop)]">
           <div className="flex items-center gap-3 px-3 py-3">
-            <Avatar name={name} size={40} />
+            <Avatar name={name} size={40} member={member} />
             <div className="min-w-0"><p className="truncate text-sm font-semibold">{name}</p><p className="truncate text-xs text-muted">{role}</p></div>
           </div>
           <div className="border-t border-line px-3 py-3">

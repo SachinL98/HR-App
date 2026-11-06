@@ -161,6 +161,40 @@ export async function changePassword(_: FormState, d: FormData): Promise<FormSta
   }
 }
 
+export async function saveProfile(_: FormState, d: FormData): Promise<FormState> {
+  try {
+    await api("/account/profile", { method: "PUT", body: { preferredName: s(d, "preferredName"), phone: s(d, "phone") } });
+    revalidatePath("/account");
+    return { ok: "Profile saved." };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** The browser crops the photo to a small square JPEG before sending it, so it is only a few tens of KB. */
+export async function uploadPhoto(d: FormData): Promise<FormState> {
+  const f = d.get("photo");
+  if (!(f instanceof Blob) || f.size === 0) return { error: "Choose a photo first." };
+  if (f.size > 400_000) return { error: "That photo is too large. Try a smaller one." };
+  try {
+    await api("/account/photo", { method: "PUT", body: { imageBase64: Buffer.from(await f.arrayBuffer()).toString("base64") } });
+    revalidatePath("/", "layout");
+    return { ok: "Photo updated." };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function removePhoto(): Promise<FormState> {
+  try {
+    await api("/account/photo", { method: "DELETE" });
+    revalidatePath("/", "layout");
+    return { ok: "Photo removed." };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
 export async function revokeSession(d: FormData) {
   await api(`/account/sessions/${uid(d)}`, { method: "DELETE" }).catch(() => {});
   revalidatePath("/account");

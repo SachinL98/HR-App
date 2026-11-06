@@ -50,7 +50,7 @@ export default async function MemberPage({ params }: { params: Promise<{ id: str
       <div className="mb-6 grid items-start gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <Card title={t("profile.about")}>
           <div className="flex flex-wrap items-center gap-5">
-            <Avatar name={name} size={72} />
+            <Avatar name={name} size={72} member={m} />
             <dl className="grid flex-1 gap-x-8 gap-y-3 text-sm sm:grid-cols-2">
               <div><dt className="text-xs text-muted">{t("profile.email")}</dt><dd className="font-medium"><a className="link" href={`mailto:${m.workEmail}`}>{m.workEmail}</a></dd></div>
               <div><dt className="text-xs text-muted">{t("people.jobRole")}</dt><dd className="font-medium">{role ?? "—"}</dd></div>
@@ -64,7 +64,7 @@ export default async function MemberPage({ params }: { params: Promise<{ id: str
           {reports.length === 0 ? <p className="text-sm text-muted">{t("profile.noReports", { name: m.firstName })}</p> : (
             <ul className="space-y-2">
               {reports.map((r) => (
-                <li key={r.id}><Link href={`/people/${r.id}`} className="flex items-center gap-3 rounded-ui p-1 text-sm hover:bg-surface-2"><Avatar name={`${r.firstName} ${r.lastName}`} size={28} /><span className="font-medium">{r.firstName} {r.lastName}</span></Link></li>
+                <li key={r.id}><Link href={`/people/${r.id}`} className="flex items-center gap-3 rounded-ui p-1 text-sm hover:bg-surface-2"><Avatar name={`${r.firstName} ${r.lastName}`} size={28} member={r} /><span className="font-medium">{r.firstName} {r.lastName}</span></Link></li>
               ))}
             </ul>
           )}

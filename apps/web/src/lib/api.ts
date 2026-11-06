@@ -47,7 +47,7 @@ export async function api<T = unknown>(
 
 export interface Me {
   id: string; firstName: string; lastName: string; workEmail: string; isOwner: boolean;
-  departmentId: string | null; jobRole: { name: string } | null; permissions: string[];
+  departmentId: string | null; jobRole: { name: string } | null; permissions: string[]; photoFileId?: string | null;
 }
 export interface Org {
   id: string; slug: string; displayName: string; legalName: string; country: string; timeZone: string;
@@ -66,7 +66,7 @@ export interface BillingOverview {
 export interface Member {
   id: string; firstName: string; lastName: string; workEmail: string; status: string; isOwner: boolean;
   departmentId: string | null; jobRoleId: string | null; managerId: string | null;
-  employeeNo?: string | null; startDate?: string | null;
+  employeeNo?: string | null; startDate?: string | null; photoFileId?: string | null;
 }
 export interface Department { id: string; name: string; parentId: string | null }
 export interface JobRole { id: string; name: string; description: string | null; defaultPermissions: string[] }
@@ -166,3 +166,8 @@ export interface DocRequest {
 }
 export interface DocPreview { title: string; text: string; missing: string[]; needsStamp: boolean; needsSignatures: string[] }
 export interface VerifyResult { valid: boolean; found: boolean; revoked?: boolean; document?: string; company?: string; issuedAt?: string }
+
+export interface Profile {
+  firstName: string; lastName: string; preferredName: string; phone: string; email: string;
+  employeeNo: string | null; jobRole: string | null; department: string | null; hasPhoto: boolean;
+}

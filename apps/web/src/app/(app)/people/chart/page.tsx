@@ -33,7 +33,7 @@ function Person({ m, role, dept, owner }: { m: Member; role?: string; dept?: str
   const name = `${m.firstName} ${m.lastName}`;
   return (
     <Link href={`/people/${m.id}`} className="inline-flex min-w-56 items-center gap-3 rounded-ui border border-line bg-surface px-3 py-2 shadow-[var(--shadow)] transition hover:border-primary">
-      <Avatar name={name} size={36} />
+      <Avatar name={name} size={36} member={m} />
       <span className="min-w-0 text-left">
         <span className="block truncate text-sm font-semibold">{name}</span>
         <span className="block truncate text-xs text-muted">{[m.isOwner ? owner : role, dept].filter(Boolean).join(" · ") || m.workEmail}</span>

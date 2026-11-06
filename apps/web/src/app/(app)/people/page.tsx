@@ -36,7 +36,7 @@ export default async function People() {
                 <tr key={m.id}>
                   <td>
                     <div className="flex items-center gap-3">
-                      <Avatar name={name} />
+                      <Avatar name={name} member={m} />
                       <div className="min-w-0">
                         <Link className="link" href={`/people/${m.id}`}>{name}</Link>
                         <div className="truncate text-xs text-muted">{m.workEmail}</div>
