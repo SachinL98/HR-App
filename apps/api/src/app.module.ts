@@ -30,6 +30,7 @@ import { SetupController } from './leave/setup.controller';
 import { LeaveService } from './leave/leave.service';
 import { CronController } from './cron/cron.controller';
 import { AvailabilityController } from './integrations/availability.controller';
+import { IdentityController } from './integrations/identity.controller';
 import { ReminderJob } from './leave/reminders';
 import { ApprovalsExtraController } from './leave/extras.controller';
 
@@ -77,6 +78,7 @@ if (process.env.NODE_ENV === 'production') {
   controllers: [
     CronController,
     AvailabilityController,
+    IdentityController,
     AppController,
     AuthController,
     OrgController,

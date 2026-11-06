@@ -171,3 +171,87 @@ describe('Single sign-on with the Developer Dashboard', () => {
     process.env.SSO_SECRET = secret;
   });
 });
+
+describe('Password check for the Developer Dashboard', () => {
+  let app: INestApplication;
+  let slug = '';
+  const email = `idn-${uniq()}@idn.test`;
+  const pw = 'correct horse battery';
+  const T = 'identity-token-for-tests-0123456789ab';
+  const http = () =>
+    request(app.getHttpServer() as Parameters<typeof request>[0]);
+  const verify = (body: object, token: string | null = T) => {
+    const r = http().post('/integrations/verify-login');
+    return (token ? r.set('Authorization', `Bearer ${token}`) : r).send(body);
+  };
+  beforeAll(async () => {
+    const mod = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+    app = mod.createNestApplication();
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
+    await app.init();
+    const org = `Idn ${uniq()}`;
+    await http()
+      .post('/auth/register')
+      .send({
+        orgName: org,
+        country: 'GB',
+        timeZone: 'Europe/London',
+        currency: 'GBP',
+        firstName: 'Ida',
+        lastName: 'Nolan',
+        email,
+        password: pw,
+      })
+      .expect(201);
+    slug = (
+      await app
+        .get(PrismaService)
+        .system.tenant.findFirstOrThrow({ where: { displayName: org } })
+    ).slug;
+    process.env.INTEGRATION_TOKEN = T;
+    process.env.INTEGRATION_TENANT = slug;
+  });
+  afterAll(async () => {
+    delete process.env.INTEGRATION_TOKEN;
+    delete process.env.INTEGRATION_TENANT;
+    await app.close();
+  });
+
+  it('needs the integration token', async () => {
+    await verify({ email, password: pw }, null).expect(401);
+    await verify({ email, password: pw }, 'wrong').expect(401);
+  });
+  it('returns the profile for the right password', async () => {
+    const r = await verify({ email, password: pw }).expect(201);
+    expect(r.body).toMatchObject({
+      status: 'ok',
+      profile: {
+        email,
+        firstName: 'Ida',
+        lastName: 'Nolan',
+        name: 'Ida Nolan',
+      },
+    });
+  });
+  it('tells unknown people from wrong passwords, and locks after repeated failures', async () => {
+    const r = await verify({ email: 'nobody@idn.test', password: pw }).expect(
+      201,
+    );
+    expect(r.body.status).toBe('unknown');
+    for (let i = 0; i < 5; i++) {
+      expect(
+        (await verify({ email, password: 'nope-nope-nope' }).expect(201)).body
+          .status,
+      ).toBe('invalid');
+    }
+    await verify({ email, password: pw }).expect(429);
+  });
+});

@@ -11,6 +11,9 @@ export interface SsoClaims {
   aud: SsoAudience;
   exp: number; // unix seconds
   n: string;
+  /** Profile the sender vouches for, so the other app can create the person on first arrival. */
+  name?: string;
+  role?: string | null;
 }
 export const SSO_TTL_SECONDS = 60;
 
@@ -28,12 +31,14 @@ export function signSso(
   aud: SsoAudience,
   secret: string,
   now = Date.now(),
+  profile?: { name: string; role: string | null },
 ): string {
   const claims: SsoClaims = {
     email: email.toLowerCase(),
     aud,
     exp: Math.floor(now / 1000) + SSO_TTL_SECONDS,
     n: randomBytes(8).toString('hex'),
+    ...(profile ? { name: profile.name, role: profile.role } : {}),
   };
   const payload = b64(Buffer.from(JSON.stringify(claims)));
   return `${payload}.${sign(payload, secret)}`;

@@ -284,6 +284,55 @@ export class AuthService {
   }
 
   /**
+   * Password check for the Developer Dashboard, which has no passwords of its own once connected to this app.
+   * Shares the sign-in lockout with the normal login, so trying both entrances never gives more guesses.
+   * Never issues a session: it only says whether the password is right and returns the profile the dashboard mirrors.
+   */
+  async verifyForIntegration(slug: string, emailIn: string, password: string) {
+    const email = emailIn.toLowerCase();
+    if (await this.throttle.lockedFor(email))
+      throw new HttpException(
+        'Too many failed attempts. Try again in a few minutes.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    const user = await this.prisma.system.user.findUnique({
+      where: { email },
+      include: {
+        memberships: {
+          where: { status: 'ACTIVE', tenant: { slug } },
+          include: { jobRole: { select: { name: true } } },
+        },
+      },
+    });
+    const member = user?.memberships[0];
+    if (!user || !member) return { status: 'unknown' as const };
+    DUMMY_HASH ??= argon2.hash('not-a-real-password');
+    const ok = await argon2.verify(
+      user.passwordHash ?? (await DUMMY_HASH),
+      password,
+    );
+    if (!user.passwordHash || !ok) {
+      await this.throttle.fail(email, 15, true);
+      return { status: 'invalid' as const };
+    }
+    await this.throttle.clear(email);
+    if (this.mail.enabled && !user.emailVerified)
+      return { status: 'unverified' as const };
+    // Two-factor cannot be asked for here, so those people sign in through the HR app and switch across.
+    if (user.mfaEnabled) return { status: 'mfa' as const };
+    return {
+      status: 'ok' as const,
+      profile: {
+        email,
+        firstName: member.firstName,
+        lastName: member.lastName,
+        name: `${member.firstName} ${member.lastName}`,
+        role: member.jobRole?.name ?? null,
+      },
+    };
+  }
+
+  /**
    * Single sign-on from the Developer Dashboard. The dashboard vouches for the person with a signed, one-minute token;
    * we only start a session for someone who already exists here, never create one, and never skip two-factor.
    */
@@ -317,14 +366,31 @@ export class AuthService {
   }
 
   /** A token that lets the signed-in person step into the Developer Dashboard. */
-  async dashboardToken(userId: string) {
+  async dashboardToken(userId: string, memberId: string, tenantId: string) {
     const secret = ssoSecret();
     if (!secret) throw new NotFoundException();
-    const user = await this.prisma.system.user.findUniqueOrThrow({
-      where: { id: userId },
-      select: { email: true },
-    });
-    return { token: signSso(user.email, 'dash', secret) };
+    const [user, member] = await Promise.all([
+      this.prisma.system.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: { email: true },
+      }),
+      this.prisma.withTenant(tenantId, (tx) =>
+        tx.member.findUniqueOrThrow({
+          where: { id: memberId },
+          select: {
+            firstName: true,
+            lastName: true,
+            jobRole: { select: { name: true } },
+          },
+        }),
+      ),
+    ]);
+    return {
+      token: signSso(user.email, 'dash', secret, Date.now(), {
+        name: `${member.firstName} ${member.lastName}`,
+        role: member.jobRole?.name ?? null,
+      }),
+    };
   }
 
   /** Second step of sign-in: an authenticator code, or one of the one-time recovery codes. */

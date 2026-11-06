@@ -461,3 +461,14 @@ How it works: the app you are signed in to creates a signed token that is valid 
 ### Jira people
 
 A person imported from Jira is linked to their sign-up automatically when the names clearly match (same words in any order, one name inside the other such as "Sachin Lakshan" and "Sachin Lakshan Perera", or a one-letter typo in a long name) and only one person fits. Ambiguous matches are left alone: use Admin → Users → Merge.
+
+### One profile and one password
+
+With the connection above in place, the HR app owns each person's password, name, email and job title.
+
+- **Sign-in on the dashboard** is checked against the HR app (`POST /integrations/verify-login`, protected by `INTEGRATION_TOKEN`, sharing the HR sign-in lockout). On success the dashboard creates or refreshes its own record from the HR profile and keeps its Jira, GitHub and sprint data on it.
+- **Password, email and name changes** are made in the HR app and apply to both. The dashboard's change-password form points people there, and dashboard sign-up is closed (invite people in the HR app instead).
+- **People who exist only on the dashboard** keep signing in with their local password until they are added to the HR app with the same email. A dashboard account that is later created in HR under a different email is matched by full name when only one account fits.
+- **Two-factor:** accounts with two-factor on cannot sign in through the dashboard form. They sign in to the HR app and use "Switch to Dev Dashboard".
+- **Safety:** once the HR app owns an account, the dashboard never falls back to a local password. Someone removed from HR cannot sign in, and an HR outage shows a "try again" message instead of opening a back door. Already signed-in sessions keep working.
+- **Not shared yet:** profile photos.

@@ -5,11 +5,10 @@ import {
   Headers,
   NotFoundException,
   Query,
-  UnauthorizedException,
 } from '@nestjs/common';
-import { timingSafeEqual } from 'crypto';
 import { Public } from '../common/ctx';
 import { PrismaService } from '../prisma/prisma.service';
+import { requireIntegration } from './integration-auth';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_DAYS = 400;
@@ -34,13 +33,7 @@ export class AvailabilityController {
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
-    const token = process.env.INTEGRATION_TOKEN;
-    const slug = process.env.INTEGRATION_TENANT;
-    if (!token || !slug) throw new NotFoundException();
-    const want = Buffer.from(`Bearer ${token}`);
-    const got = Buffer.from(auth ?? '');
-    if (got.length !== want.length || !timingSafeEqual(got, want))
-      throw new UnauthorizedException();
+    const slug = requireIntegration(auth);
 
     if (!from || !to || !DATE.test(from) || !DATE.test(to))
       throw new BadRequestException('from and to must be YYYY-MM-DD');
@@ -64,6 +57,7 @@ export class AvailabilityController {
             workEmail: true,
             firstName: true,
             lastName: true,
+            jobRole: { select: { name: true } },
           },
         }),
         tx.dayStatus.findMany({
@@ -88,6 +82,7 @@ export class AvailabilityController {
           id: m.id,
           email: m.workEmail.toLowerCase(),
           name: `${m.firstName} ${m.lastName}`,
+          role: m.jobRole?.name ?? null,
         })),
         // type: LEAVE | WFH | OUT_OF_OFFICE; part: FULL | AM | PM
         days: statuses.flatMap((s) => {

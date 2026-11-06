@@ -30,7 +30,7 @@ export class AccountController {
 
   /** Signed token that lets this person step into the Developer Dashboard without signing in again. */
   @Post('dashboard-token') dashboardToken(@CurrentCtx() c: Ctx) {
-    return this.auth.dashboardToken(c.userId);
+    return this.auth.dashboardToken(c.userId, c.memberId, c.tenantId);
   }
 
   @Get() overview(@CurrentCtx() c: Ctx) {
