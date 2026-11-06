@@ -3,7 +3,8 @@ import Link from "next/link";
 import { api, type AccountOverview, type Me, type NotificationList, type Org } from "@/lib/api";
 import { Themed } from "@/components/themed";
 import { AppShell, type NavGroup } from "@/components/app-shell";
-import { Avatar, Button } from "@/components/ui";
+import { UserMenu } from "@/components/user-menu";
+import { cookies } from "next/headers";
 import { LogoMark } from "@/components/logo";
 import { PlanBanner } from "@/components/plan-banner";
 import { logout } from "../actions";
@@ -66,30 +67,21 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       </div>
     </div>
   );
-  const account = (
-    <div className="space-y-2">
-      {process.env.DASHBOARD_URL && (
-        // A plain link on purpose: the route mints a one-minute sign-in token, which a prefetch must not trigger.
-        <a href="/api/go/dashboard" className="flex items-center justify-between rounded-ui border border-line px-3 py-2 text-sm font-medium hover:bg-surface-2">
-          {t("nav.devDashboard")} <span aria-hidden>↗</span>
-        </a>
-      )}
-    <div className="flex items-center gap-3">
-      <Link href="/account" className="flex min-w-0 flex-1 items-center gap-3 rounded-ui p-1 hover:bg-surface-2" title={t("nav.account")}>
-        <Avatar name={fullName} size={36} />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium leading-tight">{fullName}</p>
-          <p className="truncate text-xs text-muted">{me.isOwner ? "Owner" : (me.jobRole?.name ?? "Member")}</p>
-        </div>
-      </Link>
-      <form action={logout}><Button variant="subtle" size="sm" type="submit">{t("common.signOut")}</Button></form>
-    </div>
-    </div>
+  const jar = await cookies();
+  const pref = jar.get("hr_mode")?.value;
+  const mode = (pref === "light" || pref === "dark" || pref === "system" ? pref : org.themeMode) as "light" | "dark" | "system";
+  const userMenu = (
+    <UserMenu name={fullName} role={me.isOwner ? "Owner" : (me.jobRole?.name ?? "Member")} mode={mode} dashboard={!!process.env.DASHBOARD_URL} signOut={logout} />
+  );
+  const action = (
+    <Link href="/leave" className="hidden h-10 items-center rounded-ui bg-primary px-4 text-sm font-medium text-primary-fg shadow-sm hover:opacity-90 md:inline-flex">
+      + {t("leave.newRequest")}
+    </Link>
   );
 
   return (
-    <Themed theme={org}>
-      <AppShell groups={groups} brand={brand} account={account} unread={notes.unreadCount}>
+    <Themed theme={{ ...org, themeMode: mode }}>
+      <AppShell groups={groups} brand={brand} userMenu={userMenu} action={action} unread={notes.unreadCount}>
         {(me.isOwner || can("billing.manage")) && org.plan && <PlanBanner plan={org.plan} trialDaysLeft={org.trialDaysLeft} t={t} />}
         {acct.mailEnabled && !acct.emailVerified && (
           <p role="status" className="mb-6 rounded-ui border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">

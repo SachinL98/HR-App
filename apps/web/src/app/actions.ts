@@ -36,6 +36,13 @@ export async function setLanguage(lang: string) {
   revalidatePath("/", "layout");
 }
 
+/** Light, dark or system, remembered on this device. It overrides the company's default for this person only. */
+export async function setMode(mode: string) {
+  if (!["light", "dark", "system"].includes(mode)) return;
+  (await cookies()).set("hr_mode", mode, { path: "/", maxAge: 365 * 86400, sameSite: "lax", secure: process.env.NODE_ENV === "production" });
+  revalidatePath("/", "layout");
+}
+
 /** After signing in on a new device, use the language saved on the account. */
 async function adoptSavedLanguage() {
   try {

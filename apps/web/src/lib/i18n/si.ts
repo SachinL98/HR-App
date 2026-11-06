@@ -21,6 +21,12 @@ export const si: Partial<Record<Key, string>> = {
 
   "nav.home": "මුල් පිටුව",
   "nav.devDashboard": "සංවර්ධක උපකරණ පුවරුව",
+  "menu.open": "ගිණුම් මෙනුව",
+  "menu.theme": "තේමාව",
+  "menu.light": "ලා",
+  "menu.system": "පද්ධතිය",
+  "menu.dark": "අඳුරු",
+  "menu.switchDashboard": "සංවර්ධක උපකරණ පුවරුවට මාරු වන්න",
   "nav.timeOff": "නිවාඩු",
   "nav.company": "සමාගම",
   "nav.pay": "පඩි",

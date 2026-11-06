@@ -21,6 +21,12 @@ export const ta: Partial<Record<Key, string>> = {
 
   "nav.home": "முகப்பு",
   "nav.devDashboard": "டெவலப்பர் டாஷ்போர்டு",
+  "menu.open": "கணக்கு மெனு",
+  "menu.theme": "தீம்",
+  "menu.light": "வெளிர்",
+  "menu.system": "கணினி",
+  "menu.dark": "இருள்",
+  "menu.switchDashboard": "டெவலப்பர் டாஷ்போர்டுக்கு மாறு",
   "nav.timeOff": "விடுப்பு",
   "nav.company": "நிறுவனம்",
   "nav.pay": "ஊதியம்",

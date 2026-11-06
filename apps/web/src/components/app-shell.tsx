@@ -90,8 +90,8 @@ function NavLinks({ groups, onNavigate }: { groups: NavGroup[]; onNavigate?: () 
  * phones and tablets, and a top bar. The page itself always uses the full remaining width.
  */
 export function AppShell({
-  groups, brand, account, unread, children,
-}: { groups: NavGroup[]; brand: ReactNode; account: ReactNode; unread: number; children: ReactNode }) {
+  groups, brand, userMenu, action, unread, children,
+}: { groups: NavGroup[]; brand: ReactNode; userMenu: ReactNode; action?: ReactNode; unread: number; children: ReactNode }) {
   const path = usePathname();
   // The menu is "open" only for the page it was opened on, so navigating closes it.
   const { t } = useI18n();
@@ -121,7 +121,6 @@ export function AppShell({
     <div className="flex h-full flex-col">
       <div className="flex h-16 shrink-0 items-center px-4">{brand}</div>
       <div className="flex-1 overflow-y-auto px-3 pb-4 pt-2"><NavLinks groups={groups} onNavigate={() => setOpen(false)} /></div>
-      <div className="shrink-0 border-t border-line p-3">{account}</div>
     </div>
   );
 
@@ -154,11 +153,13 @@ export function AppShell({
             <kbd className="hidden rounded border border-line px-1.5 text-[11px] sm:inline">Ctrl K</kbd>
           </button>
           <LanguageSwitch className="hidden sm:block" />
+          {action}
           <Link href="/notifications" aria-label={unread ? t("topbar.unread", { n: unread }) : t("topbar.notifications")}
             className="relative inline-flex h-10 w-10 items-center justify-center rounded-ui text-muted hover:bg-surface-2 hover:text-ink">
             <Icon name="bell" className="h-5 w-5" />
             {unread > 0 && <span className="absolute right-1 top-1 min-w-4 rounded-full bg-primary px-1 text-center text-[10px] font-semibold leading-4 text-primary-fg">{unread > 99 ? "99+" : unread}</span>}
           </Link>
+          {userMenu}
         </header>
         <main id="main" tabIndex={-1} className="w-full min-w-0 flex-1 outline-none px-4 py-6 sm:px-6 lg:px-8 lg:py-8">{children}</main>
       </div>

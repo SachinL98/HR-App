@@ -24,6 +24,12 @@ export const en = {
   // Navigation
   "nav.home": "Home",
   "nav.devDashboard": "Developer Dashboard",
+  "menu.open": "Account menu",
+  "menu.theme": "Theme",
+  "menu.light": "Light",
+  "menu.system": "System",
+  "menu.dark": "Dark",
+  "menu.switchDashboard": "Switch to Dev Dashboard",
   "nav.timeOff": "Time off",
   "nav.company": "Company",
   "nav.pay": "Pay",
